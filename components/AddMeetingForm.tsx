@@ -1,7 +1,8 @@
 "use client";
 
 import { useActionState } from "react";
-import { saveMeeting } from "@/lib/actions";
+import { submitMeeting } from "@/lib/actions";
+import FormButtons from "@/components/FormButtons";
 
 const inputClasses =
   "mt-1 w-full rounded-lg border border-zinc-300 bg-white px-3 py-2 text-sm text-zinc-900 placeholder-zinc-400 focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500";
@@ -9,7 +10,7 @@ const inputClasses =
 const labelClasses = "block text-sm font-medium text-zinc-700";
 
 export default function AddMeetingForm() {
-  const [state, formAction] = useActionState(saveMeeting, {});
+  const [state, formAction] = useActionState(submitMeeting, {});
 
   return (
     <form action={formAction} className="space-y-5">
@@ -81,24 +82,11 @@ export default function AddMeetingForm() {
         />
       </div>
 
-      <div className="flex flex-wrap items-center gap-3 pt-2">
-        <button
-          type="submit"
-          className="inline-flex items-center justify-center rounded-lg bg-indigo-600 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-indigo-500"
-        >
-          Save Meeting
-        </button>
-        <button
-          type="button"
-          className="inline-flex items-center justify-center rounded-lg border border-zinc-300 bg-white px-4 py-2 text-sm font-medium text-zinc-700 transition-colors hover:bg-zinc-50"
-        >
-          Analyze Transcript
-        </button>
-      </div>
+      <FormButtons />
 
       <p className="text-xs text-zinc-400">
-        Analyze is a placeholder for now. It will be connected to the AI
-        analysis in a later step.
+        Save Meeting stores the meeting without analyzing it. Analyze Transcript
+        saves it and extracts feedback items using AI.
       </p>
     </form>
   );

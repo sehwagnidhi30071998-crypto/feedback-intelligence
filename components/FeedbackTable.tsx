@@ -1,6 +1,30 @@
 "use client";
 
+import type { ReactNode } from "react";
 import { useState, useSyncExternalStore } from "react";
+
+export type FeedbackRow = {
+  id: string;
+  title: string;
+  type: string | null;
+  reporter: string | null;
+  reporterTeam: string | null;
+  reportedDate: string | null;
+  problem: string | null;
+  requestedChange: string | null;
+  proposedImplementation: string | null;
+  domainKnowledge: string | null;
+  transcriptEvidence: string | null;
+  confidence: number | null;
+  impact: number | null;
+  ease: number | null;
+  iceScore: number | null;
+  reviewStatus: string;
+  jiraTicket: string | null;
+  jiraStatus: string | null;
+  sprint: string | null;
+  assignee: string | null;
+};
 
 type ColumnId =
   | "title"
@@ -101,7 +125,93 @@ function getServerSnapshot() {
   return DEFAULT_VISIBLE;
 }
 
-export default function FeedbackTable() {
+const statusBadge: Record<string, string> = {
+  pending: "bg-amber-50 text-amber-700",
+  approved: "bg-emerald-50 text-emerald-700",
+  rejected: "bg-red-50 text-red-700",
+  duplicate: "bg-zinc-100 text-zinc-600",
+};
+
+function formatDate(value: string | null): string {
+  if (!value) return "—";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "—";
+  return date.toLocaleDateString(undefined, {
+    day: "numeric",
+    month: "short",
+    year: "numeric",
+  });
+}
+
+function cellValue(row: FeedbackRow, id: ColumnId): ReactNode {
+  switch (id) {
+    case "title":
+      return <span className="font-medium text-zinc-900">{row.title}</span>;
+    case "type":
+      return row.type ?? "—";
+    case "reporter":
+      return row.reporter ?? "—";
+    case "reporterTeam":
+      return row.reporterTeam ?? "—";
+    case "reportedDate":
+      return formatDate(row.reportedDate);
+    case "problem":
+      return <span title={row.problem ?? ""}>{row.problem ?? "—"}</span>;
+    case "requestedChange":
+      return (
+        <span title={row.requestedChange ?? ""}>
+          {row.requestedChange ?? "—"}
+        </span>
+      );
+    case "proposedImplementation":
+      return (
+        <span title={row.proposedImplementation ?? ""}>
+          {row.proposedImplementation ?? "—"}
+        </span>
+      );
+    case "domainKnowledge":
+      return <span title={row.domainKnowledge ?? ""}>{row.domainKnowledge ?? "—"}</span>;
+    case "transcriptEvidence":
+      return (
+        <span
+          className="font-mono text-xs text-zinc-500"
+          title={row.transcriptEvidence ?? ""}
+        >
+          {row.transcriptEvidence ?? "—"}
+        </span>
+      );
+    case "confidence":
+      return row.confidence !== null ? `${row.confidence}%` : "—";
+    case "impact":
+      return row.impact !== null ? String(row.impact) : "—";
+    case "ease":
+      return row.ease !== null ? String(row.ease) : "—";
+    case "iceScore":
+      return row.iceScore !== null ? row.iceScore.toLocaleString() : "—";
+    case "reviewStatus": {
+      const label = row.reviewStatus;
+      const classes =
+        statusBadge[label.toLowerCase()] ?? "bg-zinc-100 text-zinc-600";
+      return (
+        <span
+          className={`inline-flex rounded-full px-2.5 py-0.5 text-xs font-medium capitalize ${classes}`}
+        >
+          {label}
+        </span>
+      );
+    }
+    case "jiraTicket":
+      return row.jiraTicket ?? "—";
+    case "jiraStatus":
+      return row.jiraStatus ?? "—";
+    case "sprint":
+      return row.sprint ?? "—";
+    case "assignee":
+      return row.assignee ?? "—";
+  }
+}
+
+export default function FeedbackTable({ rows }: { rows: FeedbackRow[] }) {
   const visible = useSyncExternalStore(
     subscribe,
     getSnapshot,
@@ -128,6 +238,7 @@ export default function FeedbackTable() {
         <div>
           <h2 className="text-base font-medium text-zinc-900">Feedback items</h2>
           <p className="text-xs text-zinc-500">
+            {rows.length} item{rows.length === 1 ? "" : "s"} ·{" "}
             {visibleColumns.length} of {COLUMNS.length} columns shown
           </p>
         </div>
@@ -204,35 +315,53 @@ export default function FeedbackTable() {
             </tr>
           </thead>
           <tbody>
-            <tr>
-              <td colSpan={visibleColumns.length} className="px-4 py-16">
-                <div className="flex flex-col items-center justify-center text-center">
-                  <div className="flex h-12 w-12 items-center justify-center rounded-full bg-zinc-100 text-zinc-400">
-                    <svg
-                      xmlns="http://www.w3.org/2000/svg"
-                      fill="none"
-                      viewBox="0 0 24 24"
-                      strokeWidth={1.5}
-                      stroke="currentColor"
-                      className="h-6 w-6"
-                    >
-                      <path
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                        d="M8.25 6.75h12M8.25 12h12m-12 5.25h12M3.75 6.75h.007v.008H3.75V6.75Zm.375 0a.375.375 0 1 1-.75 0 .375.375 0 0 1 .75 0ZM3.75 12h.007v.008H3.75V12Zm.375 0a.375.375 0 1 1-.75 0 .375.375 0 0 1 .75 0Zm-.375 5.25h.007v.008H3.75v-.008Zm.375 0a.375.375 0 1 1-.75 0 .375.375 0 0 1 .75 0Z"
-                      />
-                    </svg>
+            {rows.length === 0 ? (
+              <tr>
+                <td colSpan={visibleColumns.length} className="px-4 py-16">
+                  <div className="flex flex-col items-center justify-center text-center">
+                    <div className="flex h-12 w-12 items-center justify-center rounded-full bg-zinc-100 text-zinc-400">
+                      <svg
+                        xmlns="http://www.w3.org/2000/svg"
+                        fill="none"
+                        viewBox="0 0 24 24"
+                        strokeWidth={1.5}
+                        stroke="currentColor"
+                        className="h-6 w-6"
+                      >
+                        <path
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          d="M8.25 6.75h12M8.25 12h12m-12 5.25h12M3.75 6.75h.007v.008H3.75V6.75Zm.375 0a.375.375 0 1 1-.75 0 .375.375 0 0 1 .75 0ZM3.75 12h.007v.008H3.75V12Zm.375 0a.375.375 0 1 1-.75 0 .375.375 0 0 1 .75 0Zm-.375 5.25h.007v.008H3.75v-.008Zm.375 0a.375.375 0 1 1-.75 0 .375.375 0 0 1 .75 0Z"
+                        />
+                      </svg>
+                    </div>
+                    <h3 className="mt-4 text-base font-medium text-zinc-900">
+                      No feedback items yet
+                    </h3>
+                    <p className="mt-1 max-w-sm text-sm text-zinc-500">
+                      Feedback items will appear here after you analyze a meeting
+                      transcript.
+                    </p>
                   </div>
-                  <h3 className="mt-4 text-base font-medium text-zinc-900">
-                    No feedback items yet
-                  </h3>
-                  <p className="mt-1 max-w-sm text-sm text-zinc-500">
-                    Feedback items will appear here after you analyze a meeting
-                    transcript.
-                  </p>
-                </div>
-              </td>
-            </tr>
+                </td>
+              </tr>
+            ) : (
+              rows.map((row) => (
+                <tr
+                  key={row.id}
+                  className="border-b border-zinc-100 last:border-b-0"
+                >
+                  {visibleColumns.map((c) => (
+                    <td
+                      key={c.id}
+                      className="max-w-[220px] truncate px-4 py-3 text-zinc-700"
+                    >
+                      {cellValue(row, c.id)}
+                    </td>
+                  ))}
+                </tr>
+              ))
+            )}
           </tbody>
         </table>
       </div>
