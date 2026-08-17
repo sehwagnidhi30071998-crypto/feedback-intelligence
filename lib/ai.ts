@@ -1,18 +1,8 @@
+import { ALLOWED_TYPES } from "@/lib/constants";
+
 const API_KEY = process.env.GROQ_API_KEY;
 const BASE_URL = process.env.AI_BASE_URL ?? "https://api.groq.com/openai/v1";
 const MODEL = process.env.AI_MODEL ?? "openai/gpt-oss-120b";
-
-const ALLOWED_TYPES = [
-  "Bug",
-  "Feature Request",
-  "Logic Change",
-  "UX Improvement",
-  "Data Issue",
-  "Performance Issue",
-  "Domain Knowledge",
-  "Existing Issue",
-  "Other",
-];
 
 export type ExtractedFeedback = {
   title: string;

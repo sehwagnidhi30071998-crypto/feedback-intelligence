@@ -2,6 +2,7 @@
 
 import type { ReactNode } from "react";
 import { useState, useSyncExternalStore } from "react";
+import Link from "next/link";
 
 export type FeedbackRow = {
   id: string;
@@ -21,6 +22,7 @@ export type FeedbackRow = {
   iceScore: number | null;
   reviewStatus: string;
   jiraTicket: string | null;
+  jiraUrl: string | null;
   jiraStatus: string | null;
   sprint: string | null;
   assignee: string | null;
@@ -136,17 +138,32 @@ function formatDate(value: string | null): string {
   if (!value) return "—";
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return "—";
-  return date.toLocaleDateString(undefined, {
+  return new Intl.DateTimeFormat("en-US", {
     day: "numeric",
     month: "short",
     year: "numeric",
-  });
+  }).format(date);
 }
 
 function cellValue(row: FeedbackRow, id: ColumnId): ReactNode {
   switch (id) {
     case "title":
-      return <span className="font-medium text-zinc-900">{row.title}</span>;
+      return (
+        <div className="flex flex-col gap-0.5">
+          <Link
+            href={`/feedback/${row.id}`}
+            className="font-medium text-indigo-600 transition-colors hover:text-indigo-700 hover:underline"
+          >
+            {row.title}
+          </Link>
+          <Link
+            href={`/feedback/${row.id}`}
+            className="text-xs font-medium text-zinc-500 transition-colors hover:text-indigo-600"
+          >
+            Review →
+          </Link>
+        </div>
+      );
     case "type":
       return row.type ?? "—";
     case "reporter":
@@ -201,7 +218,18 @@ function cellValue(row: FeedbackRow, id: ColumnId): ReactNode {
       );
     }
     case "jiraTicket":
-      return row.jiraTicket ?? "—";
+      return row.jiraUrl ? (
+        <a
+          href={row.jiraUrl}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="font-medium text-blue-600 hover:underline"
+        >
+          {row.jiraTicket ?? "—"}
+        </a>
+      ) : (
+        row.jiraTicket ?? "—"
+      );
     case "jiraStatus":
       return row.jiraStatus ?? "—";
     case "sprint":

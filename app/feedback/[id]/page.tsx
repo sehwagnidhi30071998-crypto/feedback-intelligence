@@ -1,0 +1,114 @@
+import Link from "next/link";
+import { notFound } from "next/navigation";
+import { supabase } from "@/lib/supabase";
+import { isJiraConfigured } from "@/lib/jira";
+import FeedbackReviewForm, {
+  type ReviewItem,
+} from "@/components/FeedbackReviewForm";
+
+type DbFeedback = {
+  id: string;
+  title: string;
+  type: string | null;
+  reporter: string | null;
+  reporter_team: string | null;
+  reported_date: string | null;
+  problem: string | null;
+  requested_change: string | null;
+  proposed_implementation: string | null;
+  domain_knowledge: string | null;
+  transcript_evidence: string | null;
+  confidence: number | null;
+  impact: number | null;
+  ease: number | null;
+  ice_score: number | null;
+  review_status: string;
+  jira_tickets?: {
+    ticket_key: string | null;
+    ticket_url: string | null;
+    status: string | null;
+    sprint: string | null;
+    assignee: string | null;
+  }[];
+};
+
+export default async function FeedbackReviewPage({
+  params,
+}: {
+  params: Promise<{ id: string }>;
+}) {
+  const { id } = await params;
+
+  const { data, error } = await supabase
+    .from("feedback")
+    .select("*, jira_tickets(ticket_key, status, sprint, assignee)")
+    .eq("id", id)
+    .single();
+
+  if (error || !data) {
+    notFound();
+  }
+
+  const f = data as unknown as DbFeedback;
+
+  const item: ReviewItem = {
+    id: f.id,
+    title: f.title,
+    type: f.type,
+    reporter: f.reporter,
+    reporterTeam: f.reporter_team,
+    reportedDate: f.reported_date,
+    problem: f.problem,
+    requestedChange: f.requested_change,
+    proposedImplementation: f.proposed_implementation,
+    domainKnowledge: f.domain_knowledge,
+    transcriptEvidence: f.transcript_evidence,
+    confidence: f.confidence,
+    impact: f.impact,
+    ease: f.ease,
+    iceScore: f.ice_score,
+    reviewStatus: f.review_status,
+    jiraTicket: f.jira_tickets?.[0]?.ticket_key ?? null,
+    jiraUrl: f.jira_tickets?.[0]?.ticket_url ?? null,
+    jiraStatus: f.jira_tickets?.[0]?.status ?? null,
+    sprint: f.jira_tickets?.[0]?.sprint ?? null,
+    assignee: f.jira_tickets?.[0]?.assignee ?? null,
+    jiraConfigured: isJiraConfigured(),
+  };
+
+  return (
+    <div className="mx-auto w-full max-w-3xl px-6 py-10">
+      <Link
+        href="/feedback"
+        className="inline-flex items-center gap-1 text-sm font-medium text-indigo-600 hover:text-indigo-500"
+      >
+        <svg
+          xmlns="http://www.w3.org/2000/svg"
+          fill="none"
+          viewBox="0 0 24 24"
+          strokeWidth={1.5}
+          stroke="currentColor"
+          className="h-4 w-4"
+        >
+          <path
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            d="M10.5 19.5 3 12m0 0 7.5-7.5M3 12h18"
+          />
+        </svg>
+        Back to feedback
+      </Link>
+
+      <h1 className="mt-4 text-2xl font-semibold tracking-tight text-zinc-900">
+        Review feedback item
+      </h1>
+      <p className="mt-1 text-sm text-zinc-500">
+        Edit any field, then save your changes or make a final review decision.
+      </p>
+
+      <div className="mt-6 rounded-xl border border-zinc-200 bg-white p-6">
+        <FeedbackReviewForm item={item} />
+      </div>
+    </div>
+  );
+}
