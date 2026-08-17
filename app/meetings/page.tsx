@@ -1,7 +1,31 @@
 import Link from "next/link";
+import { supabase } from "@/lib/supabase";
 import EmptyState from "@/components/EmptyState";
 
-export default function MeetingsPage() {
+type Meeting = {
+  id: string;
+  title: string;
+  date: string | null;
+  participants: string | null;
+  status: string;
+  created_at: string;
+  feedback: { id: string }[];
+};
+
+export default async function MeetingsPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ saved?: string }>;
+}) {
+  const { saved } = await searchParams;
+
+  const { data: meetings } = await supabase
+    .from("meetings")
+    .select("id, title, date, participants, status, created_at, feedback(id)")
+    .order("created_at", { ascending: false });
+
+  const list = (meetings ?? []) as Meeting[];
+
   return (
     <div className="mx-auto w-full max-w-6xl px-6 py-10">
       <div className="flex items-center justify-between">
@@ -35,6 +59,12 @@ export default function MeetingsPage() {
         </Link>
       </div>
 
+      {saved === "1" ? (
+        <div className="mt-6 rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-700">
+          Meeting saved successfully.
+        </div>
+      ) : null}
+
       <div className="mt-6 overflow-hidden rounded-xl border border-zinc-200 bg-white">
         <table className="w-full text-left text-sm">
           <thead>
@@ -47,22 +77,55 @@ export default function MeetingsPage() {
             </tr>
           </thead>
           <tbody>
-            <tr>
-              <td colSpan={5} className="px-4 py-10">
-                <EmptyState
-                  title="No meetings yet"
-                  description="Save your first meeting to start analyzing transcripts."
-                  action={
-                    <Link
-                      href="/meetings/new"
-                      className="inline-flex items-center justify-center rounded-lg bg-indigo-600 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-indigo-500"
-                    >
-                      Add Meeting
-                    </Link>
-                  }
-                />
-              </td>
-            </tr>
+            {list.length === 0 ? (
+              <tr>
+                <td colSpan={5} className="px-4 py-10">
+                  <EmptyState
+                    title="No meetings yet"
+                    description="Save your first meeting to start analyzing transcripts."
+                    action={
+                      <Link
+                        href="/meetings/new"
+                        className="inline-flex items-center justify-center rounded-lg bg-indigo-600 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-indigo-500"
+                      >
+                        Add Meeting
+                      </Link>
+                    }
+                  />
+                </td>
+              </tr>
+            ) : (
+              list.map((meeting) => (
+                <tr
+                  key={meeting.id}
+                  className="border-b border-zinc-100 last:border-b-0"
+                >
+                  <td className="px-4 py-3 font-medium text-zinc-900">
+                    {meeting.title}
+                  </td>
+                  <td className="px-4 py-3 text-zinc-600">
+                    {meeting.date
+                      ? new Date(meeting.date).toLocaleDateString(undefined, {
+                          day: "numeric",
+                          month: "short",
+                          year: "numeric",
+                        })
+                      : "—"}
+                  </td>
+                  <td className="px-4 py-3 text-zinc-600">
+                    {meeting.participants || "—"}
+                  </td>
+                  <td className="px-4 py-3 text-zinc-600">
+                    {meeting.feedback.length}
+                  </td>
+                  <td className="px-4 py-3">
+                    <span className="inline-flex rounded-full bg-zinc-100 px-2.5 py-0.5 text-xs font-medium text-zinc-600">
+                      {meeting.status}
+                    </span>
+                  </td>
+                </tr>
+              ))
+            )}
           </tbody>
         </table>
       </div>
