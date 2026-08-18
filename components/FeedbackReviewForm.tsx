@@ -1,9 +1,18 @@
 "use client";
 
+import Link from "next/link";
 import { useActionState, useState } from "react";
 import { useFormStatus } from "react-dom";
 import { updateFeedback } from "@/lib/actions";
 import { ALLOWED_TYPES } from "@/lib/constants";
+
+export type JiraConnectionOption = {
+  id: string;
+  name: string;
+  siteUrl: string;
+  projectKey: string;
+  issueType: string;
+};
 
 export type ReviewItem = {
   id: string;
@@ -27,7 +36,7 @@ export type ReviewItem = {
   jiraStatus: string | null;
   sprint: string | null;
   assignee: string | null;
-  jiraConfigured: boolean;
+  jiraConnections: JiraConnectionOption[];
 };
 
 const inputClasses =
@@ -178,16 +187,21 @@ export default function FeedbackReviewForm({ item }: { item: ReviewItem }) {
       </div>
     );
   } else if (status === "approved") {
-    jiraNote = item.jiraConfigured ? (
-      <div className="rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-700">
-        Approved — this item is ready. Create a Jira ticket below.
-      </div>
-    ) : (
-      <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-700">
-        Approved — but Jira is not connected yet. Add your connection details
-        in Settings to enable ticket creation.
-      </div>
-    );
+    jiraNote =
+      item.jiraConnections.length > 0 ? (
+        <div className="rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-700">
+          Approved — this item is ready. Choose a Jira workspace and create the
+          ticket below.
+        </div>
+      ) : (
+        <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-700">
+          Approved — but you have no Jira workspaces connected yet.{" "}
+          <Link href="/settings" className="font-medium underline">
+            Connect your Jira workspace
+          </Link>{" "}
+          to create tickets from approved feedback.
+        </div>
+      );
   } else if (status === "pending") {
     jiraNote = (
       <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-700">
@@ -443,7 +457,32 @@ export default function FeedbackReviewForm({ item }: { item: ReviewItem }) {
           </span>
         </div>
         {jiraNote}
-        <ReviewActions canCreateJira={status === "approved" && !item.jiraTicket && item.jiraConfigured} />
+        {status === "approved" && !item.jiraTicket && item.jiraConnections.length > 0 ? (
+          <div>
+            <label className={labelClasses} htmlFor="connection_id">
+              Jira workspace
+            </label>
+            <select
+              id="connection_id"
+              name="connection_id"
+              defaultValue={item.jiraConnections[0].id}
+              className={inputClasses}
+            >
+              {item.jiraConnections.map((c) => (
+                <option key={c.id} value={c.id}>
+                  {c.name} — {c.projectKey} ({c.siteUrl.replace(/^https?:\/\//, "")})
+                </option>
+              ))}
+            </select>
+          </div>
+        ) : null}
+        <ReviewActions
+          canCreateJira={
+            status === "approved" &&
+            !item.jiraTicket &&
+            item.jiraConnections.length > 0
+          }
+        />
         <p className="text-xs text-zinc-400">
           Approve, Reject, or Duplicate also saves your edits. Only approved
           feedback can proceed to Jira.

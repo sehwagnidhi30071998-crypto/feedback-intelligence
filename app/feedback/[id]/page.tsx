@@ -1,9 +1,9 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { supabase } from "@/lib/supabase";
-import { isJiraConfigured } from "@/lib/jira";
+import { createClient } from "@/lib/supabase-server";
 import FeedbackReviewForm, {
   type ReviewItem,
+  type JiraConnectionOption,
 } from "@/components/FeedbackReviewForm";
 
 type DbFeedback = {
@@ -39,9 +39,11 @@ export default async function FeedbackReviewPage({
 }) {
   const { id } = await params;
 
+  const supabase = await createClient();
+
   const { data, error } = await supabase
     .from("feedback")
-    .select("*, jira_tickets(ticket_key, status, sprint, assignee)")
+    .select("*, jira_tickets(ticket_key, ticket_url, status, sprint, assignee)")
     .eq("id", id)
     .single();
 
@@ -50,6 +52,25 @@ export default async function FeedbackReviewPage({
   }
 
   const f = data as unknown as DbFeedback;
+
+  const { data: connections } = await supabase
+    .from("jira_connections")
+    .select("id, name, site_url, project_key, issue_type")
+    .order("created_at", { ascending: false });
+
+  const jiraConnections: JiraConnectionOption[] = ((connections ?? []) as {
+    id: string;
+    name: string;
+    site_url: string;
+    project_key: string;
+    issue_type: string;
+  }[]).map((c) => ({
+    id: c.id,
+    name: c.name,
+    siteUrl: c.site_url,
+    projectKey: c.project_key,
+    issueType: c.issue_type,
+  }));
 
   const item: ReviewItem = {
     id: f.id,
@@ -73,7 +94,7 @@ export default async function FeedbackReviewPage({
     jiraStatus: f.jira_tickets?.[0]?.status ?? null,
     sprint: f.jira_tickets?.[0]?.sprint ?? null,
     assignee: f.jira_tickets?.[0]?.assignee ?? null,
-    jiraConfigured: isJiraConfigured(),
+    jiraConnections,
   };
 
   return (

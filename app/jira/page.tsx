@@ -1,5 +1,5 @@
 import EmptyState from "@/components/EmptyState";
-import { supabase } from "@/lib/supabase";
+import { createClient } from "@/lib/supabase-server";
 
 type DbTicket = {
   id: string;
@@ -21,6 +21,7 @@ function formatDate(value: string): string {
 }
 
 export default async function JiraPage() {
+  const supabase = await createClient();
   const { data } = await supabase
     .from("jira_tickets")
     .select("*, feedback(title)")

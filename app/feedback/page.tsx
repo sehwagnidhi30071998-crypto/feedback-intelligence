@@ -1,4 +1,4 @@
-import { supabase } from "@/lib/supabase";
+import { createClient } from "@/lib/supabase-server";
 import FeedbackTable, { type FeedbackRow } from "@/components/FeedbackTable";
 
 type DbFeedback = {
@@ -33,6 +33,8 @@ export default async function FeedbackPage({
   searchParams: Promise<{ analyzed?: string; action?: string; created?: string }>;
 }) {
   const { analyzed, action, created } = await searchParams;
+
+  const supabase = await createClient();
 
   const { data } = await supabase
     .from("feedback")

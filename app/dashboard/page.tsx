@@ -1,9 +1,10 @@
 import Link from "next/link";
 import StatCard from "@/components/StatCard";
 import EmptyState from "@/components/EmptyState";
-import { supabase } from "@/lib/supabase";
+import { createClient } from "@/lib/supabase-server";
 
 export default async function DashboardPage() {
+  const supabase = await createClient();
   const [totalRes, pendingRes, approvedRes, jiraRes] = await Promise.all([
     supabase.from("feedback").select("*", { count: "exact", head: true }),
     supabase

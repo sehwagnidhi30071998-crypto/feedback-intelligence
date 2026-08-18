@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { supabase } from "@/lib/supabase";
+import { createClient } from "@/lib/supabase-server";
 import EmptyState from "@/components/EmptyState";
 
 type Meeting = {
@@ -18,6 +18,8 @@ export default async function MeetingsPage({
   searchParams: Promise<{ saved?: string }>;
 }) {
   const { saved } = await searchParams;
+
+  const supabase = await createClient();
 
   const { data: meetings } = await supabase
     .from("meetings")
