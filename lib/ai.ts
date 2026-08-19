@@ -217,6 +217,49 @@ async function groqChat(
   return content;
 }
 
+export async function transcribeAudio(
+  config: ProviderConfig | undefined,
+  file: Blob,
+  filename: string
+): Promise<string> {
+  const apiKey = config?.apiKey ?? API_KEY;
+  if (!apiKey) {
+    throw new Error("GROQ_API_KEY is not set");
+  }
+
+  const baseUrl = (config?.baseUrl ?? BASE_URL).replace(/\/+$/, "");
+  const model =
+    config?.baseUrl?.includes("openai.com")
+      ? "whisper-1"
+      : "whisper-large-v3-turbo";
+
+  const form = new FormData();
+  form.append("file", file, filename);
+  form.append("model", model);
+  form.append("response_format", "text");
+
+  const response = await fetch(`${baseUrl}/audio/transcriptions`, {
+    method: "POST",
+    headers: { Authorization: `Bearer ${apiKey}` },
+    body: form,
+  });
+
+  if (response.status === 429) {
+    throw new AiQuotaError();
+  }
+
+  if (!response.ok) {
+    throw new Error(`Transcription failed with status ${response.status}`);
+  }
+
+  const text = await response.text();
+  const trimmed = text.trim();
+  if (trimmed.length === 0) {
+    throw new Error("Transcription returned an empty result");
+  }
+  return trimmed;
+}
+
 export async function analyzeTranscript(
   transcript: string,
   context: string | null,

@@ -244,3 +244,80 @@ export async function createJiraTicket(
 
   return { key, url, status };
 }
+
+export type JiraTicketSync = {
+  status: string;
+  sprint: string | null;
+  assignee: string | null;
+};
+
+function jiraStatusName(value: unknown): string {
+  if (value && typeof value === "object") {
+    const name = (value as { name?: unknown }).name;
+    if (typeof name === "string" && name.trim()) return name.trim();
+  }
+  return "Backlog";
+}
+
+function jiraAssigneeName(value: unknown): string | null {
+  if (value && typeof value === "object") {
+    const name = (value as { displayName?: unknown }).displayName;
+    if (typeof name === "string" && name.trim()) return name.trim();
+  }
+  return null;
+}
+
+function jiraSprintName(value: unknown): string | null {
+  if (Array.isArray(value)) {
+    const sprints = value as { name?: unknown; state?: unknown }[];
+    if (sprints.length === 0) return null;
+    const active = sprints.find((s) => s.state === "active");
+    const picked = active ?? sprints[0];
+    if (typeof picked?.name === "string" && picked.name.trim()) return picked.name.trim();
+    return null;
+  }
+  if (value && typeof value === "object") {
+    const name = (value as { name?: unknown }).name;
+    if (typeof name === "string" && name.trim()) return name.trim();
+  }
+  return null;
+}
+
+/**
+ * Fetches the current status, sprint, and assignee of a Jira issue.
+ * The sprint is stored in a per-instance custom field, so the field list is
+ * queried first to find the one named "Sprint".
+ */
+export async function syncJiraTicket(
+  connection: Pick<JiraConnection, "siteUrl" | "email" | "token">,
+  key: string
+): Promise<JiraTicketSync> {
+  const baseUrl = jiraBaseUrl(connection.siteUrl);
+  const headers = jiraHeaders(connection);
+
+  let sprintField: string | null = null;
+  const fieldsRes = await fetch(`${baseUrl}/rest/api/3/field`, { headers });
+  if (fieldsRes.ok) {
+    const fields = (await fieldsRes.json()) as { id: string; name: string }[];
+    const sprint = fields.find((f) => f.name?.toLowerCase() === "sprint");
+    if (sprint) sprintField = sprint.id;
+  }
+
+  const wanted = ["status", "assignee", sprintField].filter(Boolean).join(",");
+  const issue = await fetch(
+    `${baseUrl}/rest/api/3/issue/${encodeURIComponent(key)}?fields=${encodeURIComponent(wanted)}`,
+    { headers }
+  );
+  if (!issue.ok) {
+    throw new Error(`Jira could not load the ticket (${issue.status}).`);
+  }
+
+  const json = (await issue.json()) as { fields?: Record<string, unknown> };
+  const fields = json.fields ?? {};
+
+  return {
+    status: jiraStatusName(fields.status),
+    assignee: jiraAssigneeName(fields.assignee),
+    sprint: sprintField ? jiraSprintName(fields[sprintField]) : null,
+  };
+}

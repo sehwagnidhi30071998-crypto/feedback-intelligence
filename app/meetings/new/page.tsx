@@ -28,7 +28,8 @@ export default function NewMeetingPage() {
       <p className="fi-eyebrow mt-6">Pipeline · stage 1</p>
       <h1 className="fi-page-title mt-1">Add transcript</h1>
       <p className="fi-page-sub">
-        Save a meeting and its transcript, then analyze it to extract feedback.
+        Paste a transcript, import one from a file, or upload a recording to
+        transcribe automatically — then analyze it to extract feedback.
       </p>
 
       <div className="fi-card mt-6 p-6">

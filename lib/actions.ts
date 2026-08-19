@@ -1,6 +1,7 @@
 "use server";
 
 import { createClient } from "@/lib/supabase-server";
+import { getUserAiKey, type Supabase } from "@/lib/ai-quota";
 import {
   AiQuotaError,
   analyzeTranscript,
@@ -17,41 +18,17 @@ import {
 } from "@/lib/constants";
 import {
   createJiraTicket,
+  syncJiraTicket,
   testJiraConnection,
   type JiraTicketSection,
 } from "@/lib/jira";
 import { redirect } from "next/navigation";
+import { revalidatePath } from "next/cache";
 
 export type SubmitMeetingState = { error?: string };
 
-type Supabase = Awaited<ReturnType<typeof createClient>>;
-
 const QUOTA_FALLBACK_MESSAGE =
   "The app's shared AI quota is currently exhausted or rate-limited. Add your own API key in Settings to keep generating — Groq, OpenAI, and OpenRouter are supported. Claude is not supported yet.";
-
-async function getUserAiKey(supabase: Supabase): Promise<ProviderConfig | null> {
-  const { data: row } = await supabase
-    .from("ai_keys")
-    .select("id, provider, model, base_url")
-    .maybeSingle();
-  if (!row) return null;
-
-  const master = process.env.JIRA_TOKEN_KEY;
-  if (!master) return null;
-
-  const { data: apiKey } = await supabase.rpc("decrypt_ai_key", {
-    p_id: row.id,
-    p_key: master,
-  });
-  if (!apiKey) return null;
-
-  return {
-    baseUrl:
-      row.base_url || PROVIDER_BASE_URLS[row.provider] || PROVIDER_BASE_URLS.groq,
-    apiKey,
-    model: row.model,
-  };
-}
 
 type AiResult<T> = { value: T } | { error: string };
 
@@ -401,6 +378,90 @@ export async function updateFeedback(
   }
 
   return { saved: true };
+}
+
+export type SyncTicketResult =
+  | { ok: true; ticket_key: string }
+  | { ok: false; error: string };
+
+export async function syncJiraTicketAction(
+  formData: FormData
+): Promise<SyncTicketResult> {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) {
+    return { ok: false, error: "You need to be signed in." };
+  }
+
+  const ticketId = String(formData.get("ticket_id") ?? "").trim();
+  if (!ticketId) {
+    return { ok: false, error: "No ticket was provided." };
+  }
+
+  const { data: ticket } = await supabase
+    .from("jira_tickets")
+    .select("id, ticket_key, jira_connection_id")
+    .eq("id", ticketId)
+    .single();
+  if (!ticket?.ticket_key || !ticket.jira_connection_id) {
+    return { ok: false, error: "That ticket could not be found." };
+  }
+
+  const key = process.env.JIRA_TOKEN_KEY;
+  if (!key) {
+    return { ok: false, error: "Jira encryption is not configured on the server." };
+  }
+
+  const { data: token, error: decryptError } = await supabase.rpc(
+    "decrypt_jira_token",
+    { p_id: ticket.jira_connection_id, p_key: key }
+  );
+  if (decryptError || !token) {
+    return { ok: false, error: "Could not read your Jira workspace." };
+  }
+
+  const { data: conn } = await supabase
+    .from("jira_connections")
+    .select("site_url, email")
+    .eq("id", ticket.jira_connection_id)
+    .single();
+  if (!conn) {
+    return { ok: false, error: "Could not read your Jira workspace." };
+  }
+
+  try {
+    const synced = await syncJiraTicket(
+      { siteUrl: conn.site_url, email: conn.email, token },
+      ticket.ticket_key
+    );
+
+    const { error: updateError } = await supabase
+      .from("jira_tickets")
+      .update({
+        status: synced.status,
+        sprint: synced.sprint,
+        assignee: synced.assignee,
+      })
+      .eq("id", ticket.id);
+    if (updateError) {
+      return {
+        ok: false,
+        error: "Jira was synced, but the changes could not be saved here.",
+      };
+    }
+
+    revalidatePath("/jira");
+    revalidatePath("/feedback");
+    revalidatePath("/feedback/[id]", "page");
+    return { ok: true, ticket_key: ticket.ticket_key };
+  } catch (err) {
+    return {
+      ok: false,
+      error: err instanceof Error ? err.message : "Could not sync the ticket.",
+    };
+  }
 }
 
 export type JiraConnectionState = { error?: string; saved?: boolean };

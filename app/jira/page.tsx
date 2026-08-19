@@ -1,4 +1,7 @@
 import EmptyState from "@/components/EmptyState";
+import JiraTicketsTable, {
+  type JiraTicketRow,
+} from "@/components/JiraTicketsTable";
 import { createClient } from "@/lib/supabase-server";
 
 type DbTicket = {
@@ -12,14 +15,6 @@ type DbTicket = {
   feedback: { title: string } | null;
 };
 
-function formatDate(value: string): string {
-  return new Intl.DateTimeFormat("en-US", {
-    day: "numeric",
-    month: "short",
-    year: "numeric",
-  }).format(new Date(value));
-}
-
 export default async function JiraPage() {
   const supabase = await createClient();
   const { data } = await supabase
@@ -27,7 +22,18 @@ export default async function JiraPage() {
     .select("*, feedback(title)")
     .order("created_at", { ascending: false });
 
-  const tickets = (data ?? []) as unknown as DbTicket[];
+  const dbTickets = (data ?? []) as unknown as DbTicket[];
+
+  const tickets: JiraTicketRow[] = dbTickets.map((t) => ({
+    id: t.id,
+    ticket_key: t.ticket_key,
+    ticket_url: t.ticket_url,
+    status: t.status,
+    sprint: t.sprint,
+    assignee: t.assignee,
+    created_at: t.created_at,
+    feedback_title: t.feedback?.title ?? null,
+  }));
 
   return (
     <div className="mx-auto w-full max-w-6xl px-6 py-10">
@@ -44,54 +50,7 @@ export default async function JiraPage() {
             description="Approve feedback and create a ticket from the review screen. Tickets will appear here."
           />
         ) : (
-          <div className="fi-card overflow-hidden">
-            <table className="w-full text-left text-sm">
-              <thead>
-                <tr className="border-b border-line bg-paper/60">
-                  <th className="fi-th">Ticket</th>
-                  <th className="fi-th">Summary</th>
-                  <th className="fi-th">Status</th>
-                  <th className="fi-th">Sprint</th>
-                  <th className="fi-th">Assignee</th>
-                  <th className="fi-th">Created</th>
-                </tr>
-              </thead>
-              <tbody>
-                {tickets.map((t) => (
-                  <tr
-                    key={t.id}
-                    className="border-b border-line last:border-b-0 hover:bg-paper/50"
-                  >
-                    <td className="fi-td">
-                      {t.ticket_url ? (
-                        <a
-                          href={t.ticket_url}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="fi-link font-mono text-xs"
-                        >
-                          {t.ticket_key}
-                        </a>
-                      ) : (
-                        <span className="font-mono text-xs font-medium text-ink">
-                          {t.ticket_key}
-                        </span>
-                      )}
-                    </td>
-                    <td className="max-w-[320px] truncate px-4 py-3 font-medium text-ink">
-                      {t.feedback?.title ?? "—"}
-                    </td>
-                    <td className="fi-td">{t.status ?? "—"}</td>
-                    <td className="fi-td font-mono text-xs">{t.sprint ?? "—"}</td>
-                    <td className="fi-td">{t.assignee ?? "—"}</td>
-                    <td className="fi-td font-mono text-xs text-faint">
-                      {formatDate(t.created_at)}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+          <JiraTicketsTable tickets={tickets} />
         )}
       </div>
     </div>
