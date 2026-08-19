@@ -4,24 +4,19 @@ import { useActionState } from "react";
 import { submitMeeting } from "@/lib/actions";
 import FormButtons from "@/components/FormButtons";
 
-const inputClasses =
-  "mt-1 w-full rounded-lg border border-zinc-300 bg-white px-3 py-2 text-sm text-zinc-900 placeholder-zinc-400 focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500";
-
-const labelClasses = "block text-sm font-medium text-zinc-700";
-
 export default function AddMeetingForm() {
   const [state, formAction] = useActionState(submitMeeting, {});
 
   return (
     <form action={formAction} className="space-y-5">
       {state.error ? (
-        <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+        <div className="fi-notice border-danger-soft bg-danger-soft text-danger">
           {state.error}
         </div>
       ) : null}
 
       <div>
-        <label className={labelClasses} htmlFor="title">
+        <label className="fi-label" htmlFor="title">
           Meeting title
         </label>
         <input
@@ -30,19 +25,19 @@ export default function AddMeetingForm() {
           type="text"
           required
           placeholder="e.g. Customer call — Acme Corp"
-          className={inputClasses}
+          className="fi-input"
         />
       </div>
 
       <div>
-        <label className={labelClasses} htmlFor="date">
+        <label className="fi-label" htmlFor="date">
           Meeting date
         </label>
-        <input id="date" name="date" type="date" className={inputClasses} />
+        <input id="date" name="date" type="date" className="fi-input" />
       </div>
 
       <div>
-        <label className={labelClasses} htmlFor="participants">
+        <label className="fi-label" htmlFor="participants">
           Participants
         </label>
         <input
@@ -50,13 +45,13 @@ export default function AddMeetingForm() {
           name="participants"
           type="text"
           placeholder="e.g. Sarah, Mike, David"
-          className={inputClasses}
+          className="fi-input"
         />
-        <p className="mt-1 text-xs text-zinc-400">Separate names with commas.</p>
+        <p className="mt-1 text-xs text-faint">Separate names with commas.</p>
       </div>
 
       <div>
-        <label className={labelClasses} htmlFor="context">
+        <label className="fi-label" htmlFor="context">
           Additional context
         </label>
         <textarea
@@ -64,12 +59,12 @@ export default function AddMeetingForm() {
           name="context"
           rows={3}
           placeholder="Anything helpful for understanding the meeting, such as the product area discussed..."
-          className={inputClasses}
+          className="fi-input"
         />
       </div>
 
       <div>
-        <label className={labelClasses} htmlFor="transcript">
+        <label className="fi-label" htmlFor="transcript">
           Transcript
         </label>
         <textarea
@@ -78,13 +73,13 @@ export default function AddMeetingForm() {
           rows={10}
           required
           placeholder="Paste the meeting transcript here..."
-          className={`${inputClasses} font-mono text-xs`}
+          className="fi-input font-mono text-xs leading-relaxed"
         />
       </div>
 
       <FormButtons />
 
-      <p className="text-xs text-zinc-400">
+      <p className="text-xs text-faint">
         Save Meeting stores the meeting without analyzing it. Analyze Transcript
         saves it and extracts feedback items using AI.
       </p>

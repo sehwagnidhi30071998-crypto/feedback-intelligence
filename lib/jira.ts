@@ -8,20 +8,10 @@ export type JiraConnection = {
 
 export type JiraTicketResult = { key: string; url: string; status: string };
 
-export type JiraFeedbackInput = {
-  title: string;
-  type: string | null;
-  reporter: string | null;
-  reporter_team: string | null;
-  problem: string | null;
-  requested_change: string | null;
-  proposed_implementation: string | null;
-  domain_knowledge: string | null;
-  transcript_evidence: string | null;
-  confidence: number | null;
-  impact: number | null;
-  ease: number | null;
-  ice_score: number | null;
+export type JiraTicketSection = {
+  heading: string;
+  body: string;
+  format: "text" | "list" | "quote";
 };
 
 const TYPE_MAP: Record<string, string> = {
@@ -43,10 +33,27 @@ export function jiraIssueTypeFor(
   return (feedbackType && TYPE_MAP[feedbackType]) || fallback;
 }
 
+function cleanText(value: string): string {
+  return value
+    .replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F]/g, "")
+    .replace(/[\u2028\u2029]/g, " ")
+    .replace(/\u00A0/g, " ")
+    .replace(/[\u200B\u200C\u200D\u2060\uFEFF]/g, "")
+    .replace(/\r/g, " ")
+    .replace(/\n/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function adfText(text: string) {
+  const cleaned = cleanText(text);
+  return cleaned.length > 0 ? [{ type: "text" as const, text: cleaned }] : [];
+}
+
 function adfParagraph(text: string) {
   return {
     type: "paragraph" as const,
-    content: [{ type: "text" as const, text }],
+    content: adfText(text),
   };
 }
 
@@ -54,19 +61,36 @@ function adfHeading(text: string) {
   return {
     type: "heading" as const,
     attrs: { level: 2 },
-    content: [{ type: "text" as const, text }],
+    content: adfText(text),
   };
 }
 
-function adfBlockquote(text: string) {
-  return { type: "blockquote" as const, content: [adfParagraph(text)] };
+function adfBlockquote(lines: string[]) {
+  return {
+    type: "blockquote" as const,
+    content: lines.map((line) => adfParagraph(line)),
+  };
 }
 
-function adfParagraphs(value: string) {
-  return value
+function adfBulletList(items: string[]) {
+  return {
+    type: "bulletList" as const,
+    content: items.map((item) => ({
+      type: "listItem" as const,
+      content: [adfParagraph(item)],
+    })),
+  };
+}
+
+function adfParagraphs(lines: string[]) {
+  return lines.map((line) => adfParagraph(line));
+}
+
+function adfLines(body: string): string[] {
+  return body
     .split(/\n+/)
-    .filter((line) => line.trim().length > 0)
-    .map((line) => adfParagraph(line.trim()));
+    .map((line) => cleanText(line))
+    .filter((line) => line.length > 0);
 }
 
 type AdfBlock =
@@ -79,6 +103,13 @@ type AdfBlock =
   | {
       type: "blockquote";
       content: { type: "paragraph"; content: { type: "text"; text: string }[] }[];
+    }
+  | {
+      type: "bulletList";
+      content: {
+        type: "listItem";
+        content: { type: "paragraph"; content: { type: "text"; text: string }[] }[];
+      }[];
     };
 
 function jiraHeaders(
@@ -127,68 +158,68 @@ export async function testJiraConnection(
 
 export async function createJiraTicket(
   connection: JiraConnection,
-  feedback: JiraFeedbackInput
+  summary: string,
+  sections: JiraTicketSection[],
+  feedbackType: string | null
 ): Promise<JiraTicketResult> {
   const baseUrl = jiraBaseUrl(connection.siteUrl);
   const headers = jiraHeaders(connection);
 
   const blocks: AdfBlock[] = [];
 
-  const scoring = [
-    feedback.type ? `Type: ${feedback.type}` : null,
-    feedback.reporter
-      ? `Reporter: ${feedback.reporter}${feedback.reporter_team ? ` (${feedback.reporter_team})` : ""}`
-      : null,
-    feedback.confidence !== null ? `Confidence: ${feedback.confidence}%` : null,
-    feedback.impact !== null ? `Impact: ${feedback.impact}/10` : null,
-    feedback.ease !== null ? `Ease: ${feedback.ease}/10` : null,
-    feedback.ice_score !== null ? `ICE score: ${feedback.ice_score}` : null,
-  ].filter((s): s is string => Boolean(s));
+  for (const section of sections) {
+    const body = section.body.trim();
+    if (!body) continue;
 
-  if (scoring.length > 0) {
-    blocks.push(adfParagraph(scoring.join("\n")));
-  }
+    const lines = adfLines(body);
+    if (lines.length === 0) continue;
 
-  const sections: [string, string][] = [
-    ["Problem", feedback.problem ?? ""],
-    ["Requested change", feedback.requested_change ?? ""],
-    ["Proposed implementation", feedback.proposed_implementation ?? ""],
-    ["Domain knowledge", feedback.domain_knowledge ?? ""],
-  ];
+    blocks.push(adfHeading(section.heading));
 
-  for (const [heading, value] of sections) {
-    if (value) {
-      blocks.push(adfHeading(heading));
-      blocks.push(...adfParagraphs(value));
+    if (section.format === "quote") {
+      blocks.push(adfBlockquote(lines));
+    } else if (section.format === "list") {
+      const items = lines
+        .map((line) => line.replace(/^[-•*]\s*/, "").trim())
+        .filter((item) => item.length > 0);
+      if (items.length > 0) {
+        blocks.push(adfBulletList(items));
+      }
+    } else if (lines.length === 1) {
+      blocks.push(adfParagraph(lines[0]));
+    } else {
+      blocks.push(...adfParagraphs(lines));
     }
   }
 
-  if (feedback.transcript_evidence) {
-    blocks.push(adfHeading("Transcript evidence"));
-    blocks.push(adfBlockquote(feedback.transcript_evidence.trim()));
+  if (blocks.length === 0) {
+    blocks.push(adfParagraph("No description was provided for this ticket."));
   }
 
   const description = { type: "doc", version: 1, content: blocks };
 
+  const payload = {
+      fields: {
+        project: { key: connection.projectKey },
+        summary,
+        description,
+        issuetype: {
+          name: jiraIssueTypeFor(feedbackType, connection.issueType),
+        },
+      },
+    };
+
   const response = await fetch(`${baseUrl}/rest/api/3/issue`, {
     method: "POST",
     headers,
-    body: JSON.stringify({
-      fields: {
-        project: { key: connection.projectKey },
-        summary: feedback.title,
-        description,
-        issuetype: {
-          name: jiraIssueTypeFor(feedback.type, connection.issueType),
-        },
-      },
-    }),
+    body: JSON.stringify(payload),
   });
 
   if (!response.ok) {
     const body = await response.text();
+    console.error("[jira] create issue failed", response.status, body, JSON.stringify(payload));
     throw new Error(
-      `Jira could not create the ticket (${response.status}). ${body.slice(0, 200)}`
+      `Jira could not create the ticket (${response.status}). ${body.slice(0, 300)}\nPayload:\n${JSON.stringify(payload)}`
     );
   }
 

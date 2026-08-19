@@ -64,6 +64,9 @@ create policy "jira_connections delete owner" on public.jira_connections for del
 
 -- 8. Save/update a connection with an encrypted token.
 --    p_key is the server-side master key (JIRA_TOKEN_KEY), passed by the app only.
+--    NOTE: pgcrypto's symmetric functions are pgp_sym_encrypt/pgp_sym_decrypt
+--    (pgsym_encrypt does not exist). search_path must include extensions because
+--    pgcrypto lives in the extensions schema on Supabase.
 create or replace function public.save_jira_connection(
   p_key text,
   p_name text default 'My Jira',
@@ -76,7 +79,7 @@ create or replace function public.save_jira_connection(
 ) returns uuid
 language plpgsql
 security definer
-set search_path = public
+set search_path = public, extensions
 as $$
 declare
   v_id uuid;
@@ -87,7 +90,7 @@ begin
       raise exception 'missing required fields';
     end if;
     insert into public.jira_connections (user_id, name, site_url, email, project_key, issue_type, token_enc)
-    values (auth.uid(), p_name, p_site_url, p_email, p_project_key, p_issue_type, pgsym_encrypt(p_token, p_key))
+    values (auth.uid(), p_name, p_site_url, p_email, p_project_key, p_issue_type, pgp_sym_encrypt(p_token, p_key))
     returning id into v_id;
     return v_id;
   else
@@ -101,7 +104,7 @@ begin
       email = coalesce(p_email, email),
       project_key = coalesce(p_project_key, project_key),
       issue_type = coalesce(p_issue_type, issue_type),
-      token_enc = case when p_token is not null then pgsym_encrypt(p_token, p_key) else token_enc end,
+      token_enc = case when p_token is not null then pgp_sym_encrypt(p_token, p_key) else token_enc end,
       updated_at = now()
     where id = p_id;
     return p_id;
@@ -114,7 +117,7 @@ create or replace function public.decrypt_jira_token(p_id uuid, p_key text)
 returns text
 language plpgsql
 security definer
-set search_path = public
+set search_path = public, extensions
 as $$
 declare
   v_enc bytea;
@@ -127,7 +130,7 @@ begin
   if v_owner is distinct from auth.uid() then
     raise exception 'not allowed';
   end if;
-  return convert_from(pgsym_decrypt(v_enc, p_key), 'UTF8');
+  return pgp_sym_decrypt(v_enc, p_key);
 end;
 $$;
 

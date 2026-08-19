@@ -6,7 +6,7 @@ export default function NewMeetingPage() {
     <div className="mx-auto w-full max-w-3xl px-6 py-10">
       <Link
         href="/meetings"
-        className="inline-flex items-center gap-1 text-sm font-medium text-zinc-500 transition-colors hover:text-zinc-900"
+        className="fi-link inline-flex items-center gap-1 text-sm"
       >
         <svg
           xmlns="http://www.w3.org/2000/svg"
@@ -25,14 +25,13 @@ export default function NewMeetingPage() {
         Back to Meetings
       </Link>
 
-      <h1 className="mt-4 text-2xl font-semibold tracking-tight text-zinc-900">
-        Add Meeting
-      </h1>
-      <p className="mt-1 text-sm text-zinc-500">
-        Enter the meeting details and paste the transcript for analysis.
+      <p className="fi-eyebrow mt-6">Pipeline · stage 1</p>
+      <h1 className="fi-page-title mt-1">Add transcript</h1>
+      <p className="fi-page-sub">
+        Save a meeting and its transcript, then analyze it to extract feedback.
       </p>
 
-      <div className="mt-6 rounded-xl border border-zinc-200 bg-white p-6">
+      <div className="fi-card mt-6 p-6">
         <AddMeetingForm />
       </div>
     </div>

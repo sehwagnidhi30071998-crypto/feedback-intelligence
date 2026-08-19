@@ -1,11 +1,17 @@
 "use server";
 
 import { createClient } from "@/lib/supabase-server";
-import { analyzeTranscript } from "@/lib/ai";
+import { analyzeTranscript, generateTicketDraft } from "@/lib/ai";
+import type { TicketSource } from "@/lib/ai";
+import {
+  REVIEW_STATUSES,
+  TICKET_SECTIONS,
+  type TicketDraft,
+} from "@/lib/constants";
 import {
   createJiraTicket,
   testJiraConnection,
-  type JiraFeedbackInput,
+  type JiraTicketSection,
 } from "@/lib/jira";
 import { redirect } from "next/navigation";
 
@@ -109,7 +115,7 @@ export async function submitMeeting(
   redirect("/feedback?analyzed=1");
 }
 
-export type UpdateFeedbackState = { error?: string; saved?: boolean };
+export type UpdateFeedbackState = { error?: string; saved?: boolean; draft?: TicketDraft };
 
 function toNumber(value: FormDataEntryValue | null): number | null {
   const raw = String(value ?? "").trim();
@@ -172,6 +178,44 @@ export async function updateFeedback(
     redirect(`/feedback?action=${nextStatus}`);
   }
 
+  if (action === "generate") {
+    const extraContext =
+      String(formData.get("ticket_context") ?? "").trim() || null;
+
+    const { data: fb, error: fbError } = await supabase
+      .from("feedback")
+      .select("*")
+      .eq("id", id)
+      .single();
+
+    if (fbError || !fb) {
+      return { error: "This feedback item no longer exists." };
+    }
+
+    const { data: transcript } = await supabase
+      .from("transcripts")
+      .select("content")
+      .eq("meeting_id", fb.meeting_id)
+      .order("created_at", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+
+    let draft;
+    try {
+      draft = await generateTicketDraft(
+        fb as TicketSource,
+        transcript?.content ?? null,
+        extraContext
+      );
+    } catch {
+      return {
+        error: "The AI could not generate the ticket draft. Please try again.",
+      };
+    }
+
+    return { draft };
+  }
+
   if (action === "jira") {
     const connectionId = String(formData.get("connection_id") ?? "").trim();
     if (!connectionId) {
@@ -216,6 +260,36 @@ export async function updateFeedback(
       return { error: "Could not read your Jira workspace." };
     }
 
+    const summary =
+      String(formData.get("draft_summary") ?? "").trim() || row.title;
+
+    const sections: JiraTicketSection[] = [];
+    for (const section of TICKET_SECTIONS) {
+      const body = String(formData.get(`draft_${section.id}`) ?? "").trim();
+      if (body) {
+        sections.push({
+          heading: section.heading,
+          body,
+          format: section.format,
+        });
+      }
+    }
+
+    if (sections.length === 0) {
+      return {
+        error: "No ticket content was found. Generate a draft first.",
+      };
+    }
+
+    const extraContext = String(formData.get("ticket_context") ?? "").trim();
+    if (extraContext && !sections.some((s) => s.body.includes(extraContext))) {
+      sections.push({
+        heading: "Additional context",
+        body: extraContext,
+        format: "text",
+      });
+    }
+
     try {
       const ticket = await createJiraTicket(
         {
@@ -225,7 +299,9 @@ export async function updateFeedback(
           projectKey: conn.project_key,
           issueType: conn.issue_type,
         },
-        row as JiraFeedbackInput
+        summary,
+        sections,
+        row.type
       );
 
       const { error: insertError } = await supabase
@@ -325,8 +401,13 @@ export async function saveJiraConnection(
   });
 
   if (saveError) {
+    const detail = saveError.message
+      ? saveError.message.replace(/^save_jira_connection:?\s*/i, "")
+      : "";
     return {
-      error: "Could not save the connection. Please try again.",
+      error: detail
+        ? `Could not save the connection: ${detail}`
+        : "Could not save the connection. Please try again.",
     };
   }
 
@@ -340,4 +421,122 @@ export async function deleteJiraConnection(formData: FormData) {
     await supabase.from("jira_connections").delete().eq("id", id);
   }
   redirect("/settings?deleted=1");
+}
+
+export type MeetingActionState = { error?: string };
+
+export async function analyzeMeeting(
+  meetingId: string
+): Promise<MeetingActionState> {
+  const supabase = await createClient();
+
+  const { data: meeting, error: meetingError } = await supabase
+    .from("meetings")
+    .select("id, context, date, status")
+    .eq("id", meetingId)
+    .single();
+
+  if (meetingError || !meeting) {
+    return { error: "Meeting not found." };
+  }
+  if (meeting.status === "analyzed") {
+    return { error: "This meeting has already been analyzed." };
+  }
+
+  const { data: transcript } = await supabase
+    .from("transcripts")
+    .select("id, content")
+    .eq("meeting_id", meetingId)
+    .order("created_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
+  if (!transcript?.content) {
+    return { error: "No transcript found for this meeting." };
+  }
+
+  let items;
+  try {
+    items = await analyzeTranscript(transcript.content, meeting.context);
+  } catch {
+    return {
+      error: "The AI analysis could not be completed. Please try again.",
+    };
+  }
+
+  if (items.length > 0) {
+    const rows = items.map((item) => ({
+      meeting_id: meetingId,
+      transcript_id: transcript.id,
+      title: item.title,
+      type: item.type,
+      reporter: item.reporter,
+      reporter_team: item.reporter_team,
+      reported_date: item.reported_date ?? meeting.date,
+      problem: item.problem,
+      requested_change: item.requested_change,
+      proposed_implementation: item.proposed_implementation,
+      domain_knowledge: item.domain_knowledge,
+      transcript_evidence: item.transcript_evidence,
+      confidence: item.confidence,
+      impact: item.impact,
+      ease: item.ease,
+      ice_score: item.ice_score,
+    }));
+
+    const { error: feedbackError } = await supabase
+      .from("feedback")
+      .insert(rows);
+
+    if (feedbackError) {
+      return {
+        error: "Analysis finished, but the feedback could not be saved. Please try again.",
+      };
+    }
+  }
+
+  await supabase
+    .from("meetings")
+    .update({ status: "analyzed" })
+    .eq("id", meetingId);
+
+  return {};
+}
+
+export async function setMeetingStatus(
+  meetingId: string,
+  status: string
+): Promise<MeetingActionState> {
+  if (!["saved", "analyzed"].includes(status)) {
+    return { error: "Invalid status." };
+  }
+  const supabase = await createClient();
+  const { error } = await supabase
+    .from("meetings")
+    .update({ status })
+    .eq("id", meetingId);
+  if (error) {
+    return { error: "Could not update the meeting status." };
+  }
+  return {};
+}
+
+export type FeedbackStatusState = { error?: string };
+
+export async function setFeedbackStatus(
+  feedbackId: string,
+  status: string
+): Promise<FeedbackStatusState> {
+  if (!REVIEW_STATUSES.includes(status)) {
+    return { error: "Invalid status." };
+  }
+  const supabase = await createClient();
+  const { error } = await supabase
+    .from("feedback")
+    .update({ review_status: status })
+    .eq("id", feedbackId);
+  if (error) {
+    return { error: "Could not update the review status." };
+  }
+  return {};
 }

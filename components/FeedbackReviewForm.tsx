@@ -4,7 +4,11 @@ import Link from "next/link";
 import { useActionState, useState } from "react";
 import { useFormStatus } from "react-dom";
 import { updateFeedback } from "@/lib/actions";
-import { ALLOWED_TYPES } from "@/lib/constants";
+import {
+  ALLOWED_TYPES,
+  TICKET_SECTIONS,
+  type TicketDraft,
+} from "@/lib/constants";
 
 export type JiraConnectionOption = {
   id: string;
@@ -39,16 +43,11 @@ export type ReviewItem = {
   jiraConnections: JiraConnectionOption[];
 };
 
-const inputClasses =
-  "mt-1 w-full rounded-lg border border-zinc-300 bg-white px-3 py-2 text-sm text-zinc-900 placeholder-zinc-400 focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500";
-
-const labelClasses = "block text-sm font-medium text-zinc-700";
-
 const statusBadge: Record<string, string> = {
-  pending: "bg-amber-50 text-amber-700",
-  approved: "bg-emerald-50 text-emerald-700",
-  rejected: "bg-red-50 text-red-700",
-  duplicate: "bg-zinc-100 text-zinc-600",
+  pending: "bg-amber-soft text-amber",
+  approved: "bg-ok-soft text-ok",
+  rejected: "bg-danger-soft text-danger",
+  duplicate: "bg-paper text-muted",
 };
 
 function computeIce(impact: string, ease: string, confidence: string): string {
@@ -61,11 +60,16 @@ function computeIce(impact: string, ease: string, confidence: string): string {
   return String(Math.round(i * e * (c / 10)));
 }
 
-function ReviewActions({
-  canCreateJira,
-}: {
-  canCreateJira: boolean;
-}) {
+function SectionHeading({ children }: { children: React.ReactNode }) {
+  return (
+    <h2 className="flex items-center gap-2.5 text-[11px] font-semibold uppercase tracking-[0.16em] text-faint">
+      <span className="h-3.5 w-1 rounded-full bg-signal" aria-hidden />
+      {children}
+    </h2>
+  );
+}
+
+function ReviewActions() {
   const { pending } = useFormStatus();
   const [clicked, setClicked] = useState<string | null>(null);
 
@@ -74,30 +78,17 @@ function ReviewActions({
     approve: "Approving…",
     reject: "Rejecting…",
     duplicate: "Marking…",
-    jira: "Creating ticket…",
   };
 
   return (
     <div className="flex flex-wrap items-center gap-3">
-      {canCreateJira ? (
-        <button
-          type="submit"
-          name="action"
-          value="jira"
-          onClick={() => setClicked("jira")}
-          disabled={pending}
-          className="inline-flex items-center justify-center rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-blue-500 disabled:cursor-not-allowed disabled:opacity-60"
-        >
-          {pending && clicked === "jira" ? pendingLabels.jira : "Create Jira Ticket"}
-        </button>
-      ) : null}
       <button
         type="submit"
         name="action"
         value="save"
         onClick={() => setClicked("save")}
         disabled={pending}
-        className="inline-flex items-center justify-center rounded-lg border border-zinc-300 bg-white px-4 py-2 text-sm font-medium text-zinc-700 transition-colors hover:bg-zinc-50 disabled:cursor-not-allowed disabled:opacity-60"
+        className="fi-btn-secondary"
       >
         {pending && clicked === "save" ? pendingLabels.save : "Save Changes"}
       </button>
@@ -107,7 +98,7 @@ function ReviewActions({
         value="approve"
         onClick={() => setClicked("approve")}
         disabled={pending}
-        className="inline-flex items-center justify-center rounded-lg bg-emerald-600 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-emerald-500 disabled:cursor-not-allowed disabled:opacity-60"
+        className="fi-btn-ok"
       >
         {pending && clicked === "approve" ? pendingLabels.approve : "Approve"}
       </button>
@@ -117,7 +108,7 @@ function ReviewActions({
         value="reject"
         onClick={() => setClicked("reject")}
         disabled={pending}
-        className="inline-flex items-center justify-center rounded-lg bg-red-600 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-red-500 disabled:cursor-not-allowed disabled:opacity-60"
+        className="fi-btn-danger"
       >
         {pending && clicked === "reject" ? pendingLabels.reject : "Reject"}
       </button>
@@ -127,10 +118,143 @@ function ReviewActions({
         value="duplicate"
         onClick={() => setClicked("duplicate")}
         disabled={pending}
-        className="inline-flex items-center justify-center rounded-lg border border-zinc-300 bg-white px-4 py-2 text-sm font-medium text-zinc-600 transition-colors hover:bg-zinc-50 disabled:cursor-not-allowed disabled:opacity-60"
+        className="fi-btn-secondary"
       >
         {pending && clicked === "duplicate" ? pendingLabels.duplicate : "Duplicate"}
       </button>
+    </div>
+  );
+}
+
+function TicketBuilder({
+  connections,
+  draft,
+}: {
+  connections: JiraConnectionOption[];
+  draft: TicketDraft | undefined;
+}) {
+  const { pending } = useFormStatus();
+  const [clicked, setClicked] = useState<string | null>(null);
+
+  const sectionById = new Map(
+    (draft?.sections ?? []).map((section) => [section.id, section.body])
+  );
+
+  return (
+    <div className="space-y-4 rounded-xl border border-line bg-paper/40 p-4">
+      <div>
+        <label className="fi-label" htmlFor="connection_id">
+          Jira workspace
+        </label>
+        <select
+          id="connection_id"
+          name="connection_id"
+          defaultValue={connections[0].id}
+          className="fi-input"
+        >
+          {connections.map((c) => (
+            <option key={c.id} value={c.id}>
+              {c.name} — {c.projectKey} ({c.siteUrl.replace(/^https?:\/\//, "")})
+            </option>
+          ))}
+        </select>
+      </div>
+
+      <div>
+        <label className="fi-label" htmlFor="ticket_context">
+          Additional context{" "}
+          <span className="font-normal text-faint">(optional, guides the AI)</span>
+        </label>
+        <textarea
+          id="ticket_context"
+          name="ticket_context"
+          rows={3}
+          placeholder="Anything the engineers should know — who is affected, constraints, deadlines, links, how it surfaced…"
+          className="fi-input"
+        />
+        <p className="mt-1 text-xs text-faint">
+          Passed to the AI as guidance and included in the ticket, so everything
+          stays in one place.
+        </p>
+      </div>
+
+      {draft ? (
+        <div key={JSON.stringify(draft)} className="space-y-4">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <p className="fi-eyebrow">AI-generated draft — review and edit</p>
+            <button
+              type="submit"
+              name="action"
+              value="generate"
+              onClick={() => setClicked("generate")}
+              disabled={pending}
+              className="fi-btn-ghost border border-line-strong"
+            >
+              {pending && clicked === "generate"
+                ? "Regenerating…"
+                : "Regenerate with AI"}
+            </button>
+          </div>
+
+          <div>
+            <label className="fi-label" htmlFor="draft_summary">
+              Ticket summary
+            </label>
+            <input
+              id="draft_summary"
+              name="draft_summary"
+              type="text"
+              defaultValue={draft.summary}
+              className="fi-input"
+            />
+          </div>
+
+          {TICKET_SECTIONS.map((section) => {
+            const body = sectionById.get(section.id) ?? "";
+            if (!body) return null;
+            return (
+              <div key={section.id}>
+                <label className="fi-label" htmlFor={`draft_${section.id}`}>
+                  {section.heading}
+                </label>
+                <textarea
+                  id={`draft_${section.id}`}
+                  name={`draft_${section.id}`}
+                  rows={section.format === "list" ? 5 : 3}
+                  defaultValue={body}
+                  className="fi-input"
+                />
+              </div>
+            );
+          })}
+
+          <button
+            type="submit"
+            name="action"
+            value="jira"
+            onClick={() => setClicked("jira")}
+            disabled={pending}
+            className="fi-btn-primary w-full justify-center"
+          >
+            {pending && clicked === "jira"
+              ? "Creating ticket…"
+              : "Create Jira ticket"}
+          </button>
+        </div>
+      ) : (
+        <button
+          type="submit"
+          name="action"
+          value="generate"
+          onClick={() => setClicked("generate")}
+          disabled={pending}
+          className="fi-btn-primary w-full justify-center"
+        >
+          {pending && clicked === "generate"
+            ? "Generating draft…"
+            : "Generate ticket draft with AI"}
+        </button>
+      )}
     </div>
   );
 }
@@ -167,19 +291,19 @@ export default function FeedbackReviewForm({ item }: { item: ReviewItem }) {
   let jiraNote;
   if (item.jiraTicket) {
     jiraNote = (
-      <div className="rounded-lg border border-zinc-200 bg-zinc-50 px-4 py-3 text-sm text-zinc-700">
-        Linked Jira ticket:{" "}
+      <div className="fi-notice border-signal-soft bg-signal-soft text-ink">
+        <span className="text-signal-strong">Linked Jira ticket:</span>{" "}
         {item.jiraUrl ? (
           <a
             href={item.jiraUrl}
             target="_blank"
             rel="noopener noreferrer"
-            className="font-medium text-blue-600 hover:underline"
+            className="fi-link font-mono text-xs"
           >
             {item.jiraTicket}
           </a>
         ) : (
-          <span className="font-medium">{item.jiraTicket}</span>
+          <span className="font-mono text-xs font-medium">{item.jiraTicket}</span>
         )}
         {item.jiraStatus ? ` · ${item.jiraStatus}` : ""}
         {item.sprint ? ` · Sprint: ${item.sprint}` : ""}
@@ -189,12 +313,12 @@ export default function FeedbackReviewForm({ item }: { item: ReviewItem }) {
   } else if (status === "approved") {
     jiraNote =
       item.jiraConnections.length > 0 ? (
-        <div className="rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-700">
-          Approved — this item is ready. Choose a Jira workspace and create the
-          ticket below.
+        <div className="fi-notice border-ok-soft bg-ok-soft text-ok">
+          Approved — this item is ready. Generate an AI ticket draft below,
+          review and edit it, then create the Jira ticket.
         </div>
       ) : (
-        <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-700">
+        <div className="fi-notice border-amber-soft bg-amber-soft text-amber">
           Approved — but you have no Jira workspaces connected yet.{" "}
           <Link href="/settings" className="font-medium underline">
             Connect your Jira workspace
@@ -204,13 +328,13 @@ export default function FeedbackReviewForm({ item }: { item: ReviewItem }) {
       );
   } else if (status === "pending") {
     jiraNote = (
-      <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-700">
+      <div className="fi-notice border-amber-soft bg-amber-soft text-amber">
         This item must be approved before it can proceed to Jira.
       </div>
     );
   } else {
     jiraNote = (
-      <div className="rounded-lg border border-zinc-200 bg-zinc-50 px-4 py-3 text-sm text-zinc-500">
+      <div className="fi-notice border-line bg-paper text-muted">
         This item cannot proceed to Jira because it was rejected or marked as
         duplicate.
       </div>
@@ -218,25 +342,23 @@ export default function FeedbackReviewForm({ item }: { item: ReviewItem }) {
   }
 
   return (
-    <form action={formAction} className="space-y-6">
+    <form action={formAction} className="space-y-8">
       {state.error ? (
-        <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+        <div className="fi-notice border-danger-soft bg-danger-soft text-danger">
           {state.error}
         </div>
       ) : null}
       {state.saved ? (
-        <div className="rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-700">
+        <div className="fi-notice border-ok-soft bg-ok-soft text-ok">
           Changes saved.
         </div>
       ) : null}
 
       <section className="space-y-4">
-        <h2 className="text-sm font-semibold uppercase tracking-wide text-zinc-400">
-          Core information
-        </h2>
+        <SectionHeading>Core information</SectionHeading>
         <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
           <div className="md:col-span-2">
-            <label className={labelClasses} htmlFor="title">
+            <label className="fi-label" htmlFor="title">
               Title
             </label>
             <input
@@ -245,18 +367,18 @@ export default function FeedbackReviewForm({ item }: { item: ReviewItem }) {
               type="text"
               required
               defaultValue={item.title}
-              className={inputClasses}
+              className="fi-input"
             />
           </div>
           <div>
-            <label className={labelClasses} htmlFor="type">
+            <label className="fi-label" htmlFor="type">
               Type
             </label>
             <select
               id="type"
               name="type"
               defaultValue={item.type ?? ""}
-              className={inputClasses}
+              className="fi-input"
             >
               <option value="">—</option>
               {ALLOWED_TYPES.map((t) => (
@@ -267,7 +389,7 @@ export default function FeedbackReviewForm({ item }: { item: ReviewItem }) {
             </select>
           </div>
           <div>
-            <label className={labelClasses} htmlFor="reported_date">
+            <label className="fi-label" htmlFor="reported_date">
               Reported date
             </label>
             <input
@@ -275,11 +397,11 @@ export default function FeedbackReviewForm({ item }: { item: ReviewItem }) {
               name="reported_date"
               type="date"
               defaultValue={dateValue}
-              className={inputClasses}
+              className="fi-input"
             />
           </div>
           <div>
-            <label className={labelClasses} htmlFor="reporter">
+            <label className="fi-label" htmlFor="reporter">
               Reporter
             </label>
             <input
@@ -287,11 +409,11 @@ export default function FeedbackReviewForm({ item }: { item: ReviewItem }) {
               name="reporter"
               type="text"
               defaultValue={item.reporter ?? ""}
-              className={inputClasses}
+              className="fi-input"
             />
           </div>
           <div>
-            <label className={labelClasses} htmlFor="reporter_team">
+            <label className="fi-label" htmlFor="reporter_team">
               Reporter team
             </label>
             <input
@@ -299,18 +421,16 @@ export default function FeedbackReviewForm({ item }: { item: ReviewItem }) {
               name="reporter_team"
               type="text"
               defaultValue={item.reporterTeam ?? ""}
-              className={inputClasses}
+              className="fi-input"
             />
           </div>
         </div>
       </section>
 
       <section className="space-y-4">
-        <h2 className="text-sm font-semibold uppercase tracking-wide text-zinc-400">
-          Description
-        </h2>
+        <SectionHeading>Description</SectionHeading>
         <div>
-          <label className={labelClasses} htmlFor="problem">
+          <label className="fi-label" htmlFor="problem">
             Problem
           </label>
           <textarea
@@ -318,11 +438,11 @@ export default function FeedbackReviewForm({ item }: { item: ReviewItem }) {
             name="problem"
             rows={2}
             defaultValue={item.problem ?? ""}
-            className={inputClasses}
+            className="fi-input"
           />
         </div>
         <div>
-          <label className={labelClasses} htmlFor="requested_change">
+          <label className="fi-label" htmlFor="requested_change">
             Requested change
           </label>
           <textarea
@@ -330,11 +450,11 @@ export default function FeedbackReviewForm({ item }: { item: ReviewItem }) {
             name="requested_change"
             rows={2}
             defaultValue={item.requestedChange ?? ""}
-            className={inputClasses}
+            className="fi-input"
           />
         </div>
         <div>
-          <label className={labelClasses} htmlFor="proposed_implementation">
+          <label className="fi-label" htmlFor="proposed_implementation">
             Proposed implementation
           </label>
           <textarea
@@ -342,11 +462,11 @@ export default function FeedbackReviewForm({ item }: { item: ReviewItem }) {
             name="proposed_implementation"
             rows={2}
             defaultValue={item.proposedImplementation ?? ""}
-            className={inputClasses}
+            className="fi-input"
           />
         </div>
         <div>
-          <label className={labelClasses} htmlFor="domain_knowledge">
+          <label className="fi-label" htmlFor="domain_knowledge">
             Domain knowledge
           </label>
           <textarea
@@ -354,11 +474,11 @@ export default function FeedbackReviewForm({ item }: { item: ReviewItem }) {
             name="domain_knowledge"
             rows={2}
             defaultValue={item.domainKnowledge ?? ""}
-            className={inputClasses}
+            className="fi-input"
           />
         </div>
         <div>
-          <label className={labelClasses} htmlFor="transcript_evidence">
+          <label className="fi-label" htmlFor="transcript_evidence">
             Transcript evidence
           </label>
           <textarea
@@ -366,18 +486,16 @@ export default function FeedbackReviewForm({ item }: { item: ReviewItem }) {
             name="transcript_evidence"
             rows={3}
             defaultValue={item.transcriptEvidence ?? ""}
-            className={`${inputClasses} font-mono text-xs`}
+            className="fi-input font-mono text-xs leading-relaxed"
           />
         </div>
       </section>
 
       <section className="space-y-4">
-        <h2 className="text-sm font-semibold uppercase tracking-wide text-zinc-400">
-          Scoring
-        </h2>
+        <SectionHeading>Scoring</SectionHeading>
         <div className="grid grid-cols-2 gap-4 md:grid-cols-4">
           <div>
-            <label className={labelClasses} htmlFor="confidence">
+            <label className="fi-label" htmlFor="confidence">
               Confidence (0–100)
             </label>
             <input
@@ -388,11 +506,11 @@ export default function FeedbackReviewForm({ item }: { item: ReviewItem }) {
               max={100}
               value={confidence}
               onChange={(e) => onConfidence(e.target.value)}
-              className={inputClasses}
+              className="fi-input"
             />
           </div>
           <div>
-            <label className={labelClasses} htmlFor="impact">
+            <label className="fi-label" htmlFor="impact">
               Impact (1–10)
             </label>
             <input
@@ -403,11 +521,11 @@ export default function FeedbackReviewForm({ item }: { item: ReviewItem }) {
               max={10}
               value={impact}
               onChange={(e) => onImpact(e.target.value)}
-              className={inputClasses}
+              className="fi-input"
             />
           </div>
           <div>
-            <label className={labelClasses} htmlFor="ease">
+            <label className="fi-label" htmlFor="ease">
               Ease (1–10)
             </label>
             <input
@@ -418,11 +536,11 @@ export default function FeedbackReviewForm({ item }: { item: ReviewItem }) {
               max={10}
               value={ease}
               onChange={(e) => onEase(e.target.value)}
-              className={inputClasses}
+              className="fi-input"
             />
           </div>
           <div>
-            <label className={labelClasses} htmlFor="ice_score">
+            <label className="fi-label" htmlFor="ice_score">
               ICE score
             </label>
             <input
@@ -433,9 +551,9 @@ export default function FeedbackReviewForm({ item }: { item: ReviewItem }) {
               max={1000}
               value={ice}
               onChange={(e) => setIce(e.target.value)}
-              className={inputClasses}
+              className="fi-input"
             />
-            <p className="mt-1 text-xs text-zinc-400">
+            <p className="mt-1 text-xs text-faint">
               Impact × ease × (confidence / 10)
             </p>
           </div>
@@ -443,14 +561,12 @@ export default function FeedbackReviewForm({ item }: { item: ReviewItem }) {
       </section>
 
       <section className="space-y-3">
-        <h2 className="text-sm font-semibold uppercase tracking-wide text-zinc-400">
-          Review
-        </h2>
+        <SectionHeading>Review</SectionHeading>
         <div className="flex items-center gap-3">
-          <span className="text-sm font-medium text-zinc-700">Status:</span>
+          <span className="text-sm font-medium text-ink">Status:</span>
           <span
-            className={`inline-flex rounded-full px-2.5 py-0.5 text-xs font-medium capitalize ${
-              statusBadge[status] ?? "bg-zinc-100 text-zinc-600"
+            className={`fi-badge capitalize ${
+              statusBadge[status] ?? "bg-paper text-muted"
             }`}
           >
             {status}
@@ -458,32 +574,10 @@ export default function FeedbackReviewForm({ item }: { item: ReviewItem }) {
         </div>
         {jiraNote}
         {status === "approved" && !item.jiraTicket && item.jiraConnections.length > 0 ? (
-          <div>
-            <label className={labelClasses} htmlFor="connection_id">
-              Jira workspace
-            </label>
-            <select
-              id="connection_id"
-              name="connection_id"
-              defaultValue={item.jiraConnections[0].id}
-              className={inputClasses}
-            >
-              {item.jiraConnections.map((c) => (
-                <option key={c.id} value={c.id}>
-                  {c.name} — {c.projectKey} ({c.siteUrl.replace(/^https?:\/\//, "")})
-                </option>
-              ))}
-            </select>
-          </div>
+          <TicketBuilder connections={item.jiraConnections} draft={state.draft} />
         ) : null}
-        <ReviewActions
-          canCreateJira={
-            status === "approved" &&
-            !item.jiraTicket &&
-            item.jiraConnections.length > 0
-          }
-        />
-        <p className="text-xs text-zinc-400">
+        <ReviewActions />
+        <p className="text-xs text-faint">
           Approve, Reject, or Duplicate also saves your edits. Only approved
           feedback can proceed to Jira.
         </p>

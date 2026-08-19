@@ -31,10 +31,9 @@ export default async function JiraPage() {
 
   return (
     <div className="mx-auto w-full max-w-6xl px-6 py-10">
-      <h1 className="text-2xl font-semibold tracking-tight text-zinc-900">
-        Jira
-      </h1>
-      <p className="mt-1 text-sm text-zinc-500">
+      <p className="fi-eyebrow">Pipeline · stage 3</p>
+      <h1 className="fi-page-title mt-1">Create Jira tickets</h1>
+      <p className="fi-page-sub">
         Jira tickets created from approved feedback.
       </p>
 
@@ -45,53 +44,47 @@ export default async function JiraPage() {
             description="Approve feedback and create a ticket from the review screen. Tickets will appear here."
           />
         ) : (
-          <div className="overflow-hidden rounded-xl border border-zinc-200 bg-white">
+          <div className="fi-card overflow-hidden">
             <table className="w-full text-left text-sm">
               <thead>
-                <tr className="border-b border-zinc-200 bg-zinc-50 text-xs uppercase tracking-wide text-zinc-500">
-                  <th className="px-4 py-3 font-medium">Ticket</th>
-                  <th className="px-4 py-3 font-medium">Summary</th>
-                  <th className="px-4 py-3 font-medium">Status</th>
-                  <th className="px-4 py-3 font-medium">Sprint</th>
-                  <th className="px-4 py-3 font-medium">Assignee</th>
-                  <th className="px-4 py-3 font-medium">Created</th>
+                <tr className="border-b border-line bg-paper/60">
+                  <th className="fi-th">Ticket</th>
+                  <th className="fi-th">Summary</th>
+                  <th className="fi-th">Status</th>
+                  <th className="fi-th">Sprint</th>
+                  <th className="fi-th">Assignee</th>
+                  <th className="fi-th">Created</th>
                 </tr>
               </thead>
               <tbody>
                 {tickets.map((t) => (
                   <tr
                     key={t.id}
-                    className="border-b border-zinc-100 last:border-b-0"
+                    className="border-b border-line last:border-b-0 hover:bg-paper/50"
                   >
-                    <td className="px-4 py-3">
+                    <td className="fi-td">
                       {t.ticket_url ? (
                         <a
                           href={t.ticket_url}
                           target="_blank"
                           rel="noopener noreferrer"
-                          className="font-medium text-blue-600 hover:underline"
+                          className="fi-link font-mono text-xs"
                         >
                           {t.ticket_key}
                         </a>
                       ) : (
-                        <span className="font-medium text-zinc-900">
+                        <span className="font-mono text-xs font-medium text-ink">
                           {t.ticket_key}
                         </span>
                       )}
                     </td>
-                    <td className="max-w-[320px] truncate px-4 py-3 text-zinc-700">
+                    <td className="max-w-[320px] truncate px-4 py-3 font-medium text-ink">
                       {t.feedback?.title ?? "—"}
                     </td>
-                    <td className="px-4 py-3 text-zinc-700">
-                      {t.status ?? "—"}
-                    </td>
-                    <td className="px-4 py-3 text-zinc-700">
-                      {t.sprint ?? "—"}
-                    </td>
-                    <td className="px-4 py-3 text-zinc-700">
-                      {t.assignee ?? "—"}
-                    </td>
-                    <td className="px-4 py-3 text-zinc-500">
+                    <td className="fi-td">{t.status ?? "—"}</td>
+                    <td className="fi-td font-mono text-xs">{t.sprint ?? "—"}</td>
+                    <td className="fi-td">{t.assignee ?? "—"}</td>
+                    <td className="fi-td font-mono text-xs text-faint">
                       {formatDate(t.created_at)}
                     </td>
                   </tr>

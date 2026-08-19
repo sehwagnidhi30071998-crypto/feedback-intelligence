@@ -101,7 +101,7 @@ export default async function FeedbackReviewPage({
     <div className="mx-auto w-full max-w-3xl px-6 py-10">
       <Link
         href="/feedback"
-        className="inline-flex items-center gap-1 text-sm font-medium text-indigo-600 hover:text-indigo-500"
+        className="fi-link inline-flex items-center gap-1 text-sm"
       >
         <svg
           xmlns="http://www.w3.org/2000/svg"
@@ -120,14 +120,13 @@ export default async function FeedbackReviewPage({
         Back to feedback
       </Link>
 
-      <h1 className="mt-4 text-2xl font-semibold tracking-tight text-zinc-900">
-        Review feedback item
-      </h1>
-      <p className="mt-1 text-sm text-zinc-500">
+      <p className="fi-eyebrow mt-6">Pipeline · stage 2</p>
+      <h1 className="fi-page-title mt-1">Review feedback item</h1>
+      <p className="fi-page-sub">
         Edit any field, then save your changes or make a final review decision.
       </p>
 
-      <div className="mt-6 rounded-xl border border-zinc-200 bg-white p-6">
+      <div className="fi-card mt-6 p-6">
         <FeedbackReviewForm item={item} />
       </div>
     </div>
