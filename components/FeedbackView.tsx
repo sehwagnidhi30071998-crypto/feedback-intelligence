@@ -3,8 +3,9 @@
 import type { ReactNode } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useState, useSyncExternalStore, useTransition } from "react";
+import { useMemo, useState, useSyncExternalStore, useTransition } from "react";
 import { setFeedbackStatus } from "@/lib/actions";
+import { REVIEW_STATUSES } from "@/lib/constants";
 
 export type FeedbackRow = {
   id: string;
@@ -30,7 +31,7 @@ export type FeedbackRow = {
   assignee: string | null;
 };
 
-const statusOptions = ["pending", "approved", "rejected", "duplicate"];
+const STATUS_CHOICES = ["pending", "approved", "rejected", "duplicate"];
 
 type ColumnId =
   | "title"
@@ -152,6 +153,292 @@ const wrapStore = makeStore<boolean>(
   "fi-feedback-wrap",
   (raw) => raw !== "false"
 );
+
+type SortField =
+  | "iceScore"
+  | "confidence"
+  | "impact"
+  | "ease"
+  | "reportedDate"
+  | "title"
+  | "type"
+  | "reviewStatus"
+  | "reporter"
+  | "jiraTicket"
+  | "jiraStatus";
+
+type SortState = { field: SortField; dir: "asc" | "desc" };
+
+type Filters = { type: string; reviewStatus: string; hasTicket: string };
+
+type FilterOption = { value: string; label: string };
+
+const SORT_FIELDS: { id: SortField; label: string }[] = [
+  { id: "iceScore", label: "ICE score" },
+  { id: "confidence", label: "Confidence" },
+  { id: "impact", label: "Impact" },
+  { id: "ease", label: "Ease" },
+  { id: "reportedDate", label: "Reported date" },
+  { id: "title", label: "Title" },
+  { id: "type", label: "Type" },
+  { id: "reviewStatus", label: "Review status" },
+  { id: "reporter", label: "Reporter" },
+  { id: "jiraTicket", label: "Jira ticket" },
+  { id: "jiraStatus", label: "Jira status" },
+];
+
+const NUMERIC_FIELDS = new Set<SortField>([
+  "iceScore",
+  "confidence",
+  "impact",
+  "ease",
+]);
+
+const SORTABLE_IDS = new Set<ColumnId>(SORT_FIELDS.map((f) => f.id));
+
+const DEFAULT_SORT: SortState = { field: "iceScore", dir: "desc" };
+const DEFAULT_FILTERS: Filters = { type: "", reviewStatus: "", hasTicket: "" };
+
+const sortStore = makeStore<SortState>(DEFAULT_SORT, "fi-feedback-sort", (raw) => {
+  try {
+    const p = JSON.parse(raw) as Partial<SortState>;
+    if (
+      p &&
+      typeof p.field === "string" &&
+      SORT_FIELDS.some((f) => f.id === p.field) &&
+      (p.dir === "asc" || p.dir === "desc")
+    ) {
+      return { field: p.field as SortField, dir: p.dir };
+    }
+    return DEFAULT_SORT;
+  } catch {
+    return DEFAULT_SORT;
+  }
+});
+
+const filtersStore = makeStore<Filters>(
+  DEFAULT_FILTERS,
+  "fi-feedback-filters",
+  (raw) => {
+    try {
+      const p = JSON.parse(raw) as Partial<Filters>;
+      return {
+        type: typeof p.type === "string" ? p.type : "",
+        reviewStatus: typeof p.reviewStatus === "string" ? p.reviewStatus : "",
+        hasTicket: typeof p.hasTicket === "string" ? p.hasTicket : "",
+      };
+    } catch {
+      return DEFAULT_FILTERS;
+    }
+  }
+);
+
+function sortValue(row: FeedbackRow, field: SortField): number | string | null {
+  switch (field) {
+    case "iceScore":
+      return row.iceScore;
+    case "confidence":
+      return row.confidence;
+    case "impact":
+      return row.impact;
+    case "ease":
+      return row.ease;
+    case "reportedDate":
+      return row.reportedDate;
+    case "title":
+      return row.title;
+    case "type":
+      return row.type;
+    case "reviewStatus":
+      return row.reviewStatus;
+    case "reporter":
+      return row.reporter;
+    case "jiraTicket":
+      return row.jiraTicket;
+    case "jiraStatus":
+      return row.jiraStatus;
+  }
+}
+
+function nextSort(prev: SortState, field: SortField): SortState {
+  if (prev.field === field) {
+    return { field, dir: prev.dir === "desc" ? "asc" : "desc" };
+  }
+  return { field, dir: NUMERIC_FIELDS.has(field) ? "desc" : "asc" };
+}
+
+function IconBase({
+  d,
+  className = "h-4 w-4",
+}: {
+  d: string;
+  className?: string;
+}) {
+  return (
+    <svg
+      xmlns="http://www.w3.org/2000/svg"
+      fill="none"
+      viewBox="0 0 24 24"
+      strokeWidth={1.5}
+      stroke="currentColor"
+      className={className}
+    >
+      <path strokeLinecap="round" strokeLinejoin="round" d={d} />
+    </svg>
+  );
+}
+
+const ARROW_UP_DOWN =
+  "M3 7.5 7.5 3m0 0L12 7.5M7.5 3v13.5m13.5 0L16.5 21m0 0L12 16.5m4.5 4.5V7.5";
+const CHEVRON_UP = "m4.5 15.75 7.5-7.5 7.5 7.5";
+const CHEVRON_DOWN = "m19.5 8.25-7.5 7.5-7.5-7.5";
+const FUNNEL =
+  "M12 3c2.755 0 5.455.232 8.083.678.533.09.917.556.917 1.096v1.044a2.25 2.25 0 0 1-.659 1.591l-5.432 5.432a2.25 2.25 0 0 0-.659 1.591v2.927a2.25 2.25 0 0 1-1.244 2.013L9.75 21v-6.568a2.25 2.25 0 0 0-.659-1.591L3.659 7.409A2.25 2.25 0 0 1 3 5.818V4.774c0-.54.384-1.006.917-1.096A48.32 48.32 0 0 1 12 3Z";
+const CHECK = "m4.5 12.75 6 6 9-13.5";
+
+function SortMenu({
+  sort,
+  onChange,
+}: {
+  sort: SortState;
+  onChange: (sort: SortState) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const activeLabel =
+    SORT_FIELDS.find((f) => f.id === sort.field)?.label ?? SORT_FIELDS[0].label;
+
+  return (
+    <div className="relative">
+      {open ? (
+        <div
+          className="fixed inset-0 z-10"
+          onClick={() => setOpen(false)}
+          aria-hidden
+        />
+      ) : null}
+      <button
+        type="button"
+        onClick={() => setOpen((o) => !o)}
+        className="fi-btn-secondary"
+      >
+        <IconBase d={ARROW_UP_DOWN} />
+        <span>Sort: {activeLabel}</span>
+        <IconBase d={sort.dir === "desc" ? CHEVRON_DOWN : CHEVRON_UP} className="h-3.5 w-3.5" />
+      </button>
+      {open ? (
+        <div className="absolute right-0 z-20 mt-2 w-60 rounded-xl border border-line bg-surface p-1.5 shadow-lg shadow-ink/5">
+          <p className="fi-eyebrow px-2 pb-1">Sort by</p>
+          <div className="max-h-72 overflow-auto">
+            {SORT_FIELDS.map((f) => (
+              <button
+                key={f.id}
+                type="button"
+                onClick={() => {
+                  onChange(nextSort(sort, f.id));
+                  setOpen(false);
+                }}
+                className={`flex w-full items-center justify-between gap-2 rounded-lg px-2 py-1.5 text-left text-sm ${
+                  f.id === sort.field
+                    ? "bg-signal-soft font-medium text-signal-strong"
+                    : "text-ink hover:bg-paper"
+                }`}
+              >
+                {f.label}
+                {f.id === sort.field ? (
+                  <IconBase
+                    d={sort.dir === "desc" ? CHEVRON_DOWN : CHEVRON_UP}
+                    className="h-4 w-4"
+                  />
+                ) : null}
+              </button>
+            ))}
+          </div>
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+function FilterMenu({
+  label,
+  options,
+  value,
+  onChange,
+  compact = false,
+}: {
+  label: string;
+  options: FilterOption[];
+  value: string;
+  onChange: (value: string) => void;
+  compact?: boolean;
+}) {
+  const [open, setOpen] = useState(false);
+  const activeLabel = options.find((o) => o.value === value)?.label;
+  const active = value !== "";
+
+  return (
+    <div className="relative">
+      {open ? (
+        <div
+          className="fixed inset-0 z-10"
+          onClick={() => setOpen(false)}
+          aria-hidden
+        />
+      ) : null}
+      <button
+        type="button"
+        onClick={() => setOpen((o) => !o)}
+        aria-pressed={open}
+        title={compact ? `Filter by ${label}` : undefined}
+        className={
+          compact
+            ? `inline-flex h-8 w-8 items-center justify-center rounded-lg border transition-colors ${
+                active
+                  ? "border-signal bg-signal-soft text-signal-strong"
+                  : "border-line-strong bg-white text-faint hover:text-ink"
+              }`
+            : `fi-btn-secondary ${
+                active ? "border-signal bg-signal-soft/60 text-signal-strong" : ""
+              }`
+        }
+      >
+        <IconBase d={FUNNEL} className={compact ? "h-3.5 w-3.5" : "h-4 w-4"} />
+        {compact ? null : (
+          <span className="capitalize">{active ? activeLabel ?? label : label}</span>
+        )}
+      </button>
+      {open ? (
+        <div
+          className={`absolute right-0 z-20 mt-2 rounded-xl border border-line bg-surface p-1.5 shadow-lg shadow-ink/5 ${
+            compact ? "w-48" : "w-56"
+          }`}
+        >
+          <p className="fi-eyebrow px-2 pb-1">{label}</p>
+          <div className="max-h-64 overflow-auto">
+            {options.map((o) => (
+              <button
+                key={o.value}
+                type="button"
+                onClick={() => {
+                  onChange(o.value);
+                  setOpen(false);
+                }}
+                className={`flex w-full items-center justify-between gap-2 rounded-lg px-2 py-1.5 text-left text-sm ${
+                  o.value === value
+                    ? "bg-signal-soft font-medium text-signal-strong"
+                    : "text-ink hover:bg-paper"
+                }`}
+              >
+                <span className="capitalize">{o.label}</span>
+                {o.value === value ? <IconBase d={CHECK} className="h-4 w-4" /> : null}
+              </button>
+            ))}
+          </div>
+        </div>
+      ) : null}
+    </div>
+  );
+}
 
 function formatDate(value: string | null): string {
   if (!value) return "—";
@@ -277,7 +564,7 @@ function StatusSelect({
       onChange={(e) => onChange(row.id, e.target.value)}
       className="rounded-lg border border-line-strong bg-white px-2.5 py-1.5 text-xs font-medium capitalize text-ink transition-colors hover:border-signal disabled:cursor-not-allowed disabled:opacity-60"
     >
-      {statusOptions.map((s) => (
+      {STATUS_CHOICES.map((s) => (
         <option key={s} value={s}>
           {s}
         </option>
@@ -521,6 +808,12 @@ function TableView({
   busyId,
   errors,
   onStatusChange,
+  sort,
+  onToggleSort,
+  filters,
+  typeOptions,
+  statusOptions,
+  onFilter,
 }: {
   rows: FeedbackRow[];
   visible: ColumnId[];
@@ -529,6 +822,12 @@ function TableView({
   busyId: string | null;
   errors: Record<string, string>;
   onStatusChange: (id: string, status: string) => void;
+  sort: SortState;
+  onToggleSort: (id: ColumnId) => void;
+  filters: Filters;
+  typeOptions: FilterOption[];
+  statusOptions: FilterOption[];
+  onFilter: (key: keyof Filters, value: string) => void;
 }) {
   const visibleColumns = COLUMNS.filter((c) => visible.includes(c.id));
   const cellClasses = `px-4 py-3 align-top text-sm ${
@@ -541,11 +840,56 @@ function TableView({
         <table className="w-full border-collapse text-left text-sm">
           <thead>
             <tr className="border-b border-line bg-paper/60">
-              {visibleColumns.map((c) => (
-                <th key={c.id} className="fi-th">
-                  {c.label}
-                </th>
-              ))}
+              {visibleColumns.map((c) => {
+                const sortable = SORTABLE_IDS.has(c.id);
+                const active = sort.field === c.id;
+                return (
+                  <th key={c.id} className="fi-th relative">
+                    <div className="flex items-center gap-1">
+                      {sortable ? (
+                        <button
+                          type="button"
+                          onClick={() => onToggleSort(c.id)}
+                          title={`Sort by ${c.label}`}
+                          className={`inline-flex items-center gap-1 transition-colors hover:text-ink ${
+                            active ? "text-signal-strong" : ""
+                          }`}
+                        >
+                          {c.label}
+                          {active ? (
+                            <IconBase
+                              d={sort.dir === "desc" ? CHEVRON_DOWN : CHEVRON_UP}
+                              className="h-3 w-3"
+                            />
+                          ) : (
+                            <IconBase d={ARROW_UP_DOWN} className="h-3 w-3 opacity-40" />
+                          )}
+                        </button>
+                      ) : (
+                        <span>{c.label}</span>
+                      )}
+                      {c.id === "type" ? (
+                        <FilterMenu
+                          compact
+                          label="Type"
+                          options={typeOptions}
+                          value={filters.type}
+                          onChange={(v) => onFilter("type", v)}
+                        />
+                      ) : null}
+                      {c.id === "reviewStatus" ? (
+                        <FilterMenu
+                          compact
+                          label="Review status"
+                          options={statusOptions}
+                          value={filters.reviewStatus}
+                          onChange={(v) => onFilter("reviewStatus", v)}
+                        />
+                      ) : null}
+                    </div>
+                  </th>
+                );
+              })}
               <th className="fi-th text-right">Action</th>
             </tr>
           </thead>
@@ -610,6 +954,75 @@ export default function FeedbackView({
     columnsStore.getSnapshot,
     columnsStore.getServerSnapshot
   );
+  const sort = useSyncExternalStore(
+    sortStore.subscribe,
+    sortStore.getSnapshot,
+    sortStore.getServerSnapshot
+  );
+  const filters = useSyncExternalStore(
+    filtersStore.subscribe,
+    filtersStore.getSnapshot,
+    filtersStore.getServerSnapshot
+  );
+
+  const typeOptions = useMemo<FilterOption[]>(() => {
+    const types = Array.from(
+      new Set(rows.map((r) => r.type).filter((t): t is string => Boolean(t)))
+    ).sort();
+    return [
+      { value: "", label: "All types" },
+      ...types.map((t) => ({ value: t, label: t })),
+    ];
+  }, [rows]);
+
+  const statusFilterOptions = useMemo<FilterOption[]>(
+    () => [
+      { value: "", label: "All statuses" },
+      ...REVIEW_STATUSES.map((s) => ({ value: s, label: s })),
+    ],
+    []
+  );
+
+  const ticketOptions: FilterOption[] = [
+    { value: "", label: "All tickets" },
+    { value: "has", label: "Has ticket" },
+    { value: "none", label: "No ticket" },
+  ];
+
+  const filteredRows = useMemo(() => {
+    let out = rows;
+    if (filters.type) {
+      out = out.filter((r) => r.type === filters.type);
+    }
+    if (filters.reviewStatus) {
+      out = out.filter(
+        (r) => r.reviewStatus.toLowerCase() === filters.reviewStatus
+      );
+    }
+    if (filters.hasTicket === "has") {
+      out = out.filter((r) => Boolean(r.jiraTicket));
+    }
+    if (filters.hasTicket === "none") {
+      out = out.filter((r) => !r.jiraTicket);
+    }
+    const dir = sort.dir === "asc" ? 1 : -1;
+    return [...out].sort((a, b) => {
+      const va = sortValue(a, sort.field);
+      const vb = sortValue(b, sort.field);
+      if (va === vb) return 0;
+      if (va === null) return 1;
+      if (vb === null) return -1;
+      if (typeof va === "number" && typeof vb === "number") {
+        return (va - vb) * dir;
+      }
+      return (
+        String(va).localeCompare(String(vb), undefined, { numeric: true }) * dir
+      );
+    });
+  }, [rows, sort, filters]);
+
+  const hasFilters =
+    filters.type !== "" || filters.reviewStatus !== "" || filters.hasTicket !== "";
 
   const onStatusChange = (id: string, status: string) => {
     setErrors((e) => ({ ...e, [id]: "" }));
@@ -634,6 +1047,17 @@ export default function FeedbackView({
 
   const resetColumns = () => columnsStore.set(DEFAULT_VISIBLE);
 
+  const toggleSort = (id: ColumnId) => {
+    if (!SORTABLE_IDS.has(id)) return;
+    sortStore.set(nextSort(sort, id as SortField));
+  };
+
+  const setFilter = (key: keyof Filters, value: string) => {
+    filtersStore.set({ ...filters, [key]: value });
+  };
+
+  const clearFilters = () => filtersStore.set(DEFAULT_FILTERS);
+
   return (
     <div className="space-y-4">
       <div className="fi-card flex flex-wrap items-center justify-between gap-3 px-4 py-3">
@@ -642,11 +1066,49 @@ export default function FeedbackView({
             Feedback items
           </h2>
           <p className="text-xs text-faint">
-            {rows.length} item{rows.length === 1 ? "" : "s"}
+            {filteredRows.length} item{filteredRows.length === 1 ? "" : "s"}
+            {hasFilters ? ` of ${rows.length}` : ""}
           </p>
         </div>
 
         <div className="flex flex-wrap items-center gap-2">
+          {view === "cards" ? (
+            <>
+              <SortMenu
+                sort={sort}
+                onChange={(s) => sortStore.set(s)}
+              />
+              <FilterMenu
+                label="Type"
+                options={typeOptions}
+                value={filters.type}
+                onChange={(v) => setFilter("type", v)}
+              />
+              <FilterMenu
+                label="Status"
+                options={statusFilterOptions}
+                value={filters.reviewStatus}
+                onChange={(v) => setFilter("reviewStatus", v)}
+              />
+              <FilterMenu
+                label="Ticket"
+                options={ticketOptions}
+                value={filters.hasTicket}
+                onChange={(v) => setFilter("hasTicket", v)}
+              />
+            </>
+          ) : null}
+
+          {hasFilters ? (
+            <button
+              type="button"
+              onClick={clearFilters}
+              className="fi-btn-ghost border border-line-strong text-xs"
+            >
+              Clear filters
+            </button>
+          ) : null}
+
           {view === "table" ? (
             <>
               <button
@@ -796,9 +1258,22 @@ export default function FeedbackView({
         </div>
       </div>
 
-      {view === "cards" ? (
+      {rows.length === 0 ? null : filteredRows.length === 0 ? (
+        <div className="fi-card flex flex-col items-center justify-center px-6 py-12 text-center">
+          <h2 className="font-display text-base font-semibold text-ink">
+            No feedback matches the current filters
+          </h2>
+          <button
+            type="button"
+            onClick={clearFilters}
+            className="fi-btn-secondary mt-4"
+          >
+            Clear filters
+          </button>
+        </div>
+      ) : view === "cards" ? (
         <CardsView
-          rows={rows}
+          rows={filteredRows}
           hasConnections={hasConnections}
           busyId={busyId}
           errors={errors}
@@ -806,13 +1281,19 @@ export default function FeedbackView({
         />
       ) : (
         <TableView
-          rows={rows}
+          rows={filteredRows}
           visible={visible}
           wrap={wrap}
           hasConnections={hasConnections}
           busyId={busyId}
           errors={errors}
           onStatusChange={onStatusChange}
+          sort={sort}
+          onToggleSort={toggleSort}
+          filters={filters}
+          typeOptions={typeOptions}
+          statusOptions={statusFilterOptions}
+          onFilter={setFilter}
         />
       )}
     </div>

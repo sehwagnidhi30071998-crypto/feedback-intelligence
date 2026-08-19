@@ -10,6 +10,37 @@ export const ALLOWED_TYPES = [
   "Other",
 ];
 
+export const AI_PROVIDERS = [
+  {
+    id: "groq",
+    label: "Groq",
+    defaultModel: "openai/gpt-oss-120b",
+    baseUrl: "https://api.groq.com/openai/v1",
+  },
+  {
+    id: "openai",
+    label: "OpenAI",
+    defaultModel: "gpt-4o-mini",
+    baseUrl: "https://api.openai.com/v1",
+  },
+  {
+    id: "openrouter",
+    label: "OpenRouter",
+    defaultModel: "openai/gpt-4o-mini",
+    baseUrl: "https://openrouter.ai/api/v1",
+  },
+] as const;
+
+export type AiProviderId = (typeof AI_PROVIDERS)[number]["id"];
+
+export const PROVIDER_BASE_URLS: Record<string, string> = Object.fromEntries(
+  AI_PROVIDERS.map((p) => [p.id, p.baseUrl])
+);
+
+export const PROVIDER_DEFAULT_MODELS: Record<string, string> = Object.fromEntries(
+  AI_PROVIDERS.map((p) => [p.id, p.defaultModel])
+);
+
 export const REVIEW_STATUSES = ["pending", "approved", "rejected", "duplicate"];
 
 export const TICKET_SECTIONS = [

@@ -160,7 +160,8 @@ export async function createJiraTicket(
   connection: JiraConnection,
   summary: string,
   sections: JiraTicketSection[],
-  feedbackType: string | null
+  feedbackType: string | null,
+  issueTypeOverride?: string | null
 ): Promise<JiraTicketResult> {
   const baseUrl = jiraBaseUrl(connection.siteUrl);
   const headers = jiraHeaders(connection);
@@ -204,7 +205,7 @@ export async function createJiraTicket(
         summary,
         description,
         issuetype: {
-          name: jiraIssueTypeFor(feedbackType, connection.issueType),
+          name: issueTypeOverride || jiraIssueTypeFor(feedbackType, connection.issueType),
         },
       },
     };

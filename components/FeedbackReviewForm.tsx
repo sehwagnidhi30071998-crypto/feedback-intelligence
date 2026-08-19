@@ -6,6 +6,7 @@ import { useFormStatus } from "react-dom";
 import { updateFeedback } from "@/lib/actions";
 import {
   ALLOWED_TYPES,
+  REVIEW_STATUSES,
   TICKET_SECTIONS,
   type TicketDraft,
 } from "@/lib/constants";
@@ -41,13 +42,7 @@ export type ReviewItem = {
   sprint: string | null;
   assignee: string | null;
   jiraConnections: JiraConnectionOption[];
-};
-
-const statusBadge: Record<string, string> = {
-  pending: "bg-amber-soft text-amber",
-  approved: "bg-ok-soft text-ok",
-  rejected: "bg-danger-soft text-danger",
-  duplicate: "bg-paper text-muted",
+  suggestedIssueType: string;
 };
 
 function computeIce(impact: string, ease: string, confidence: string): string {
@@ -69,58 +64,44 @@ function SectionHeading({ children }: { children: React.ReactNode }) {
   );
 }
 
-function ReviewActions() {
+function ReviewControls({
+  value,
+  onChange,
+}: {
+  value: string;
+  onChange: (value: string) => void;
+}) {
   const { pending } = useFormStatus();
-  const [clicked, setClicked] = useState<string | null>(null);
-
-  const pendingLabels: Record<string, string> = {
-    save: "Saving…",
-    approve: "Approving…",
-    reject: "Rejecting…",
-    duplicate: "Marking…",
-  };
 
   return (
-    <div className="flex flex-wrap items-center gap-3">
+    <div className="flex flex-wrap items-end gap-3">
+      <div>
+        <label className="fi-label" htmlFor="status">
+          Review status
+        </label>
+        <select
+          id="status"
+          name="status"
+          value={value}
+          onChange={(e) => onChange(e.target.value)}
+          disabled={pending}
+          className="fi-input capitalize"
+        >
+          {REVIEW_STATUSES.map((s) => (
+            <option key={s} value={s}>
+              {s}
+            </option>
+          ))}
+        </select>
+      </div>
       <button
         type="submit"
         name="action"
         value="save"
-        onClick={() => setClicked("save")}
         disabled={pending}
         className="fi-btn-secondary"
       >
-        {pending && clicked === "save" ? pendingLabels.save : "Save Changes"}
-      </button>
-      <button
-        type="submit"
-        name="action"
-        value="approve"
-        onClick={() => setClicked("approve")}
-        disabled={pending}
-        className="fi-btn-ok"
-      >
-        {pending && clicked === "approve" ? pendingLabels.approve : "Approve"}
-      </button>
-      <button
-        type="submit"
-        name="action"
-        value="reject"
-        onClick={() => setClicked("reject")}
-        disabled={pending}
-        className="fi-btn-danger"
-      >
-        {pending && clicked === "reject" ? pendingLabels.reject : "Reject"}
-      </button>
-      <button
-        type="submit"
-        name="action"
-        value="duplicate"
-        onClick={() => setClicked("duplicate")}
-        disabled={pending}
-        className="fi-btn-secondary"
-      >
-        {pending && clicked === "duplicate" ? pendingLabels.duplicate : "Duplicate"}
+        {pending ? "Saving…" : "Save changes"}
       </button>
     </div>
   );
@@ -129,9 +110,11 @@ function ReviewActions() {
 function TicketBuilder({
   connections,
   draft,
+  suggestedType,
 }: {
   connections: JiraConnectionOption[];
   draft: TicketDraft | undefined;
+  suggestedType: string;
 }) {
   const { pending } = useFormStatus();
   const [clicked, setClicked] = useState<string | null>(null);
@@ -161,8 +144,32 @@ function TicketBuilder({
       </div>
 
       <div>
+        <label className="fi-label" htmlFor="ticket_type">
+          Ticket type
+        </label>
+        <select
+          id="ticket_type"
+          name="ticket_type"
+          defaultValue={suggestedType}
+          className="fi-input"
+        >
+          {["Bug", "Story", "Task"].some((t) => t === suggestedType) ? null : (
+            <option value={suggestedType}>{suggestedType}</option>
+          )}
+          {["Bug", "Story", "Task"].map((t) => (
+            <option key={t} value={t}>
+              {t}
+            </option>
+          ))}
+        </select>
+        <p className="mt-1 text-xs text-faint">
+          Auto-selected from the feedback type — you can change it.
+        </p>
+      </div>
+
+      <div>
         <label className="fi-label" htmlFor="ticket_context">
-          Additional context{" "}
+          Additional instructions{" "}
           <span className="font-normal text-faint">(optional, guides the AI)</span>
         </label>
         <textarea
@@ -271,6 +278,9 @@ export default function FeedbackReviewForm({ item }: { item: ReviewItem }) {
     item.confidence?.toString() ?? ""
   );
   const [ice, setIce] = useState(item.iceScore?.toString() ?? "");
+  const [selectedStatus, setSelectedStatus] = useState(
+    item.reviewStatus.toLowerCase()
+  );
 
   const onImpact = (value: string) => {
     setImpact(value);
@@ -285,7 +295,6 @@ export default function FeedbackReviewForm({ item }: { item: ReviewItem }) {
     setIce(computeIce(impact, ease, value));
   };
 
-  const status = item.reviewStatus.toLowerCase();
   const dateValue = item.reportedDate ? String(item.reportedDate).slice(0, 10) : "";
 
   let jiraNote;
@@ -310,12 +319,13 @@ export default function FeedbackReviewForm({ item }: { item: ReviewItem }) {
         {item.assignee ? ` · ${item.assignee}` : ""}
       </div>
     );
-  } else if (status === "approved") {
+  } else if (selectedStatus === "approved") {
     jiraNote =
       item.jiraConnections.length > 0 ? (
         <div className="fi-notice border-ok-soft bg-ok-soft text-ok">
-          Approved — this item is ready. Generate an AI ticket draft below,
-          review and edit it, then create the Jira ticket.
+          Approved — this item is ready. Add any additional instructions,
+          choose a ticket type, then generate an AI draft below, review and
+          edit it, and create the Jira ticket.
         </div>
       ) : (
         <div className="fi-notice border-amber-soft bg-amber-soft text-amber">
@@ -326,7 +336,7 @@ export default function FeedbackReviewForm({ item }: { item: ReviewItem }) {
           to create tickets from approved feedback.
         </div>
       );
-  } else if (status === "pending") {
+  } else if (selectedStatus === "pending") {
     jiraNote = (
       <div className="fi-notice border-amber-soft bg-amber-soft text-amber">
         This item must be approved before it can proceed to Jira.
@@ -562,24 +572,20 @@ export default function FeedbackReviewForm({ item }: { item: ReviewItem }) {
 
       <section className="space-y-3">
         <SectionHeading>Review</SectionHeading>
-        <div className="flex items-center gap-3">
-          <span className="text-sm font-medium text-ink">Status:</span>
-          <span
-            className={`fi-badge capitalize ${
-              statusBadge[status] ?? "bg-paper text-muted"
-            }`}
-          >
-            {status}
-          </span>
-        </div>
+        <ReviewControls value={selectedStatus} onChange={setSelectedStatus} />
         {jiraNote}
-        {status === "approved" && !item.jiraTicket && item.jiraConnections.length > 0 ? (
-          <TicketBuilder connections={item.jiraConnections} draft={state.draft} />
+        {selectedStatus === "approved" &&
+        !item.jiraTicket &&
+        item.jiraConnections.length > 0 ? (
+          <TicketBuilder
+            connections={item.jiraConnections}
+            draft={state.draft}
+            suggestedType={item.suggestedIssueType}
+          />
         ) : null}
-        <ReviewActions />
         <p className="text-xs text-faint">
-          Approve, Reject, or Duplicate also saves your edits. Only approved
-          feedback can proceed to Jira.
+          Change the status from the dropdown and save. Only approved feedback
+          can proceed to Jira.
         </p>
       </section>
     </form>

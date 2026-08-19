@@ -1,11 +1,18 @@
 "use server";
 
 import { createClient } from "@/lib/supabase-server";
-import { analyzeTranscript, generateTicketDraft } from "@/lib/ai";
+import {
+  AiQuotaError,
+  analyzeTranscript,
+  generateTicketDraft,
+  testAiProvider,
+  type ProviderConfig,
+} from "@/lib/ai";
 import type { TicketSource } from "@/lib/ai";
 import {
   REVIEW_STATUSES,
   TICKET_SECTIONS,
+  PROVIDER_BASE_URLS,
   type TicketDraft,
 } from "@/lib/constants";
 import {
@@ -16,6 +23,68 @@ import {
 import { redirect } from "next/navigation";
 
 export type SubmitMeetingState = { error?: string };
+
+type Supabase = Awaited<ReturnType<typeof createClient>>;
+
+const QUOTA_FALLBACK_MESSAGE =
+  "The app's shared AI quota is currently exhausted or rate-limited. Add your own API key in Settings to keep generating — Groq, OpenAI, and OpenRouter are supported. Claude is not supported yet.";
+
+async function getUserAiKey(supabase: Supabase): Promise<ProviderConfig | null> {
+  const { data: row } = await supabase
+    .from("ai_keys")
+    .select("id, provider, model, base_url")
+    .maybeSingle();
+  if (!row) return null;
+
+  const master = process.env.JIRA_TOKEN_KEY;
+  if (!master) return null;
+
+  const { data: apiKey } = await supabase.rpc("decrypt_ai_key", {
+    p_id: row.id,
+    p_key: master,
+  });
+  if (!apiKey) return null;
+
+  return {
+    baseUrl:
+      row.base_url || PROVIDER_BASE_URLS[row.provider] || PROVIDER_BASE_URLS.groq,
+    apiKey,
+    model: row.model,
+  };
+}
+
+type AiResult<T> = { value: T } | { error: string };
+
+async function withAiProvider<T>(
+  supabase: Supabase,
+  run: (config?: ProviderConfig) => Promise<T>
+): Promise<AiResult<T>> {
+  try {
+    return { value: await run(undefined) };
+  } catch (err) {
+    if (err instanceof AiQuotaError) {
+      const own = await getUserAiKey(supabase);
+      if (!own) {
+        return { error: QUOTA_FALLBACK_MESSAGE };
+      }
+      try {
+        return { value: await run(own) };
+      } catch (err2) {
+        if (err2 instanceof AiQuotaError) {
+          return {
+            error:
+              "Your own AI key is also out of quota or rate-limited right now. Check it in Settings or try again shortly.",
+          };
+        }
+        return {
+          error:
+            "The AI request using your own key failed. Check the key and model in Settings.",
+        };
+      }
+    }
+    return { error: "The AI request could not be completed. Please try again." };
+  }
+}
 
 export async function submitMeeting(
   _prevState: SubmitMeetingState,
@@ -69,18 +138,17 @@ export async function submitMeeting(
     redirect("/meetings?saved=1");
   }
 
-  let items;
-  try {
-    items = await analyzeTranscript(transcript, context);
-  } catch {
+  const analysis = await withAiProvider(supabase, (config) =>
+    analyzeTranscript(transcript, context, config)
+  );
+  if ("error" in analysis) {
     await supabase
       .from("meetings")
       .update({ status: "saved" })
       .eq("id", meeting.id);
-    return {
-      error: "The AI analysis could not be completed. Your meeting was saved, but no feedback was extracted. Please try analyzing again.",
-    };
+    return { error: analysis.error };
   }
+  const items = analysis.value;
 
   if (items.length > 0) {
     const rows = items.map((item) => ({
@@ -163,6 +231,11 @@ export async function updateFeedback(
     update.review_status = nextStatus;
   }
 
+  const status = String(formData.get("status") ?? "").trim().toLowerCase();
+  if (REVIEW_STATUSES.includes(status)) {
+    update.review_status = status;
+  }
+
   const supabase = await createClient();
 
   const { error } = await supabase
@@ -200,20 +273,19 @@ export async function updateFeedback(
       .limit(1)
       .maybeSingle();
 
-    let draft;
-    try {
-      draft = await generateTicketDraft(
+    const result = await withAiProvider(supabase, (config) =>
+      generateTicketDraft(
         fb as TicketSource,
         transcript?.content ?? null,
-        extraContext
-      );
-    } catch {
-      return {
-        error: "The AI could not generate the ticket draft. Please try again.",
-      };
+        extraContext,
+        config
+      )
+    );
+    if ("error" in result) {
+      return { error: result.error };
     }
 
-    return { draft };
+    return { draft: result.value };
   }
 
   if (action === "jira") {
@@ -301,7 +373,8 @@ export async function updateFeedback(
         },
         summary,
         sections,
-        row.type
+        row.type,
+        String(formData.get("ticket_type") ?? "").trim() || null
       );
 
       const { error: insertError } = await supabase
@@ -423,6 +496,98 @@ export async function deleteJiraConnection(formData: FormData) {
   redirect("/settings?deleted=1");
 }
 
+export type AiKeyState = { error?: string; saved?: boolean };
+
+const SUPPORTED_PROVIDERS = ["groq", "openai", "openrouter"];
+
+export async function saveAiKey(
+  _prevState: AiKeyState,
+  formData: FormData
+): Promise<AiKeyState> {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) {
+    return { error: "You need to be signed in." };
+  }
+
+  const id = String(formData.get("id") ?? "").trim() || null;
+  const provider = String(formData.get("provider") ?? "").trim();
+  const model = String(formData.get("model") ?? "").trim();
+  const baseUrl = String(formData.get("base_url") ?? "").trim() || null;
+  const apiKey = String(formData.get("api_key") ?? "").trim();
+
+  if (!SUPPORTED_PROVIDERS.includes(provider)) {
+    return {
+      error:
+        "Please choose a supported provider (Groq, OpenAI, or OpenRouter). Claude is not supported yet.",
+    };
+  }
+  if (!model) {
+    return { error: "Please enter the model name." };
+  }
+  if (!apiKey && !id) {
+    return { error: "Please enter your API key." };
+  }
+
+  const master = process.env.JIRA_TOKEN_KEY;
+  if (!master) {
+    return { error: "AI key encryption is not configured on the server." };
+  }
+
+  let effectiveKey = apiKey;
+  if (!effectiveKey && id) {
+    const { data: existing } = await supabase.rpc("decrypt_ai_key", {
+      p_id: id,
+      p_key: master,
+    });
+    if (!existing) {
+      return { error: "Could not read the stored key. Enter the key again." };
+    }
+    effectiveKey = existing;
+  }
+
+  const test = await testAiProvider({
+    baseUrl: baseUrl || PROVIDER_BASE_URLS[provider],
+    apiKey: effectiveKey,
+    model,
+  });
+  if (!test.ok) {
+    return { error: test.error };
+  }
+
+  const { error: saveError } = await supabase.rpc("save_ai_key", {
+    p_key: master,
+    p_provider: provider,
+    p_model: model,
+    p_base_url: baseUrl,
+    p_api_key: apiKey || null,
+    p_key_tail: effectiveKey.slice(-4),
+    p_id: id,
+  });
+
+  if (saveError) {
+    const detail = saveError.message.replace(/^save_ai_key:?\s*/i, "");
+    return {
+      error: detail
+        ? `Could not save the key: ${detail}`
+        : "Could not save the key. Please try again.",
+    };
+  }
+
+  return { saved: true };
+}
+
+export async function deleteAiKey(formData: FormData) {
+  const supabase = await createClient();
+  const id = String(formData.get("id") ?? "").trim();
+  if (id) {
+    await supabase.from("ai_keys").delete().eq("id", id);
+  }
+  redirect("/settings?ai_deleted=1");
+}
+
 export type MeetingActionState = { error?: string };
 
 export async function analyzeMeeting(
@@ -455,14 +620,13 @@ export async function analyzeMeeting(
     return { error: "No transcript found for this meeting." };
   }
 
-  let items;
-  try {
-    items = await analyzeTranscript(transcript.content, meeting.context);
-  } catch {
-    return {
-      error: "The AI analysis could not be completed. Please try again.",
-    };
+  const analysis = await withAiProvider(supabase, (config) =>
+    analyzeTranscript(transcript.content, meeting.context, config)
+  );
+  if ("error" in analysis) {
+    return { error: analysis.error };
   }
+  const items = analysis.value;
 
   if (items.length > 0) {
     const rows = items.map((item) => ({

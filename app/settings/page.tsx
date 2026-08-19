@@ -3,7 +3,9 @@ import { createClient } from "@/lib/supabase-server";
 import JiraConnectionForm, {
   type JiraConnectionFormInitial,
 } from "@/components/JiraConnectionForm";
-import { deleteJiraConnection } from "@/lib/actions";
+import AiKeyForm from "@/components/AiKeyForm";
+import { deleteJiraConnection, deleteAiKey } from "@/lib/actions";
+import { AI_PROVIDERS } from "@/lib/constants";
 
 type DbConnection = {
   id: string;
@@ -15,12 +17,20 @@ type DbConnection = {
   created_at: string;
 };
 
+type DbAiKey = {
+  id: string;
+  provider: string;
+  model: string;
+  base_url: string | null;
+  key_tail: string;
+};
+
 export default async function SettingsPage({
   searchParams,
 }: {
-  searchParams: Promise<{ edit?: string; deleted?: string }>;
+  searchParams: Promise<{ edit?: string; deleted?: string; ai_deleted?: string }>;
 }) {
-  const { edit, deleted } = await searchParams;
+  const { edit, deleted, ai_deleted } = await searchParams;
 
   const supabase = await createClient();
   const { data: connections } = await supabase
@@ -41,6 +51,16 @@ export default async function SettingsPage({
         issueType: editing.issue_type,
       }
     : undefined;
+
+  const { data: aiKeyRow } = await supabase
+    .from("ai_keys")
+    .select("id, provider, model, base_url, key_tail")
+    .maybeSingle();
+  const aiKey = (aiKeyRow ?? null) as DbAiKey | null;
+  const aiEdit = edit === "ai";
+  const aiKeyLabel =
+    AI_PROVIDERS.find((p) => p.id === aiKey?.provider)?.label ??
+    aiKey?.provider;
 
   const aiConfigured = Boolean(process.env.GROQ_API_KEY);
   const model = process.env.AI_MODEL ?? "openai/gpt-oss-120b";
@@ -69,9 +89,81 @@ export default async function SettingsPage({
             }`}
           >
             {aiConfigured
-              ? `Connected — using model "${model}".`
+              ? `Connected — using the shared model "${model}".`
               : "Not configured — set GROQ_API_KEY to enable transcript analysis."}
           </div>
+          <p className="mt-3 text-xs text-faint">
+            The app uses the shared Groq key first. When its quota is used up,
+            anyone can bring their own key below and the app will switch to it
+            automatically. Claude (Anthropic) is not supported yet.
+          </p>
+        </section>
+
+        <section className="fi-card p-6">
+          <div className="flex items-center justify-between gap-4">
+            <h2 className="font-display text-base font-semibold text-ink">
+              Your AI key (optional)
+            </h2>
+            {aiKey && !aiEdit ? (
+              <Link href="/settings?edit=ai" className="fi-btn-secondary">
+                Edit key
+              </Link>
+            ) : null}
+          </div>
+          <p className="mt-1 text-sm text-muted">
+            Bring your own provider key so you can keep analyzing even when the
+            shared quota runs out. Keys are encrypted in the database and only
+            ever used by your own server requests — they are never shown back.
+          </p>
+
+          {ai_deleted === "1" ? (
+            <div className="fi-notice mt-4 border-ok-soft bg-ok-soft text-ok">
+              Your AI key was removed.
+            </div>
+          ) : null}
+
+          {aiKey && !aiEdit ? (
+            <div className="mt-4 flex items-center justify-between gap-4 rounded-lg border border-line px-4 py-3">
+              <div>
+                <p className="text-sm font-medium text-ink">
+                  {aiKeyLabel} · {aiKey.model}
+                </p>
+                <p className="mt-0.5 font-mono text-xs text-faint">
+                  key ends in …{aiKey.key_tail}
+                  {aiKey.base_url ? ` · ${aiKey.base_url}` : ""}
+                </p>
+              </div>
+              <form action={deleteAiKey}>
+                <input type="hidden" name="id" value={aiKey.id} />
+                <button type="submit" className="fi-btn-danger-outline">
+                  Delete
+                </button>
+              </form>
+            </div>
+          ) : null}
+
+          {!aiKey || aiEdit ? (
+            <div className="mt-5 border-t border-line pt-5">
+              <h3 className="text-sm font-medium text-ink">
+                {aiEdit ? "Edit your AI key" : "Connect your own AI key"}
+              </h3>
+              <div className="mt-4">
+                <AiKeyForm
+                  initial={
+                    aiKey && aiEdit
+                      ? {
+                          id: aiKey.id,
+                          provider: aiKey.provider,
+                          model: aiKey.model,
+                          baseUrl: aiKey.base_url ?? "",
+                          keyTail: aiKey.key_tail,
+                        }
+                      : undefined
+                  }
+                />
+              </div>
+            </div>
+          ) : null}
         </section>
 
         <section className="fi-card p-6">

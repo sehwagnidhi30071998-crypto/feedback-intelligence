@@ -9,6 +9,19 @@ const API_KEY = process.env.GROQ_API_KEY;
 const BASE_URL = process.env.AI_BASE_URL ?? "https://api.groq.com/openai/v1";
 const MODEL = process.env.AI_MODEL ?? "openai/gpt-oss-120b";
 
+export type ProviderConfig = {
+  baseUrl: string;
+  apiKey: string;
+  model: string;
+};
+
+export class AiQuotaError extends Error {
+  constructor() {
+    super("AI quota or rate limit exceeded");
+    this.name = "AiQuotaError";
+  }
+}
+
 export type ExtractedFeedback = {
   title: string;
   type: string;
@@ -160,20 +173,25 @@ function parseJson(content: string): unknown {
 async function groqChat(
   system: string,
   user: string,
-  temperature: number
+  temperature: number,
+  config?: ProviderConfig
 ): Promise<string> {
-  if (!API_KEY) {
+  const apiKey = config?.apiKey ?? API_KEY;
+  if (!apiKey) {
     throw new Error("GROQ_API_KEY is not set");
   }
 
-  const response = await fetch(`${BASE_URL}/chat/completions`, {
+  const baseUrl = (config?.baseUrl ?? BASE_URL).replace(/\/+$/, "");
+  const model = config?.model ?? MODEL;
+
+  const response = await fetch(`${baseUrl}/chat/completions`, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
-      Authorization: `Bearer ${API_KEY}`,
+      Authorization: `Bearer ${apiKey}`,
     },
     body: JSON.stringify({
-      model: MODEL,
+      model,
       messages: [
         { role: "system", content: system },
         { role: "user", content: user },
@@ -182,6 +200,10 @@ async function groqChat(
       response_format: { type: "json_object" },
     }),
   });
+
+  if (response.status === 429) {
+    throw new AiQuotaError();
+  }
 
   if (!response.ok) {
     throw new Error(`AI request failed with status ${response.status}`);
@@ -197,13 +219,14 @@ async function groqChat(
 
 export async function analyzeTranscript(
   transcript: string,
-  context: string | null
+  context: string | null,
+  config?: ProviderConfig
 ): Promise<ExtractedFeedback[]> {
   const userMessage = context
     ? `Meeting context: ${context}\n\nTranscript:\n${transcript}`
     : `Transcript:\n${transcript}`;
 
-  const content = await groqChat(SYSTEM_PROMPT, userMessage, 0.2);
+  const content = await groqChat(SYSTEM_PROMPT, userMessage, 0.2, config);
 
   const parsed = parseJson(content) as { feedback?: unknown } | null;
   const items = Array.isArray(parsed?.feedback) ? parsed.feedback : [];
@@ -215,7 +238,8 @@ export async function analyzeTranscript(
 export async function generateTicketDraft(
   feedback: TicketSource,
   transcript: string | null,
-  extraContext: string | null
+  extraContext: string | null,
+  config?: ProviderConfig
 ): Promise<TicketDraft> {
   const scoring = [
     feedback.type ? `Type: ${feedback.type}` : null,
@@ -256,7 +280,7 @@ export async function generateTicketDraft(
     .filter((s): s is string => Boolean(s))
     .join("\n\n");
 
-  const content = await groqChat(TICKET_SYSTEM_PROMPT, userMessage, 0.3);
+  const content = await groqChat(TICKET_SYSTEM_PROMPT, userMessage, 0.3, config);
 
   const parsed = parseJson(content) as
     | { summary?: unknown; sections?: Record<string, unknown> }
@@ -283,4 +307,53 @@ export async function generateTicketDraft(
   }
 
   return { summary, sections };
+}
+
+export async function testAiProvider(
+  config: ProviderConfig
+): Promise<{ ok: true } | { ok: false; error: string }> {
+  const baseUrl = config.baseUrl.replace(/\/+$/, "");
+
+  let response: Response;
+  try {
+    response = await fetch(`${baseUrl}/models`, {
+      headers: { Authorization: `Bearer ${config.apiKey}` },
+    });
+  } catch {
+    return { ok: false, error: "Could not reach the provider. Check the base URL." };
+  }
+
+  if (response.status === 401 || response.status === 403) {
+    return { ok: false, error: "The provider rejected this API key." };
+  }
+  if (!response.ok) {
+    return { ok: false, error: `The provider returned an error (${response.status}).` };
+  }
+
+  let ids: string[] = [];
+  try {
+    const json = (await response.json()) as { data?: { id?: string }[] };
+    ids = Array.isArray(json.data) ? json.data.map((m) => m.id ?? "") : [];
+  } catch {
+    return { ok: false, error: "Could not read the model list from the provider." };
+  }
+
+  if (ids.length === 0) {
+    return { ok: false, error: "Could not read the model list from the provider." };
+  }
+
+  const match = ids.some(
+    (id) =>
+      id === config.model ||
+      id.endsWith(`/${config.model}`) ||
+      config.model.endsWith(`/${id}`)
+  );
+  if (!match) {
+    return {
+      ok: false,
+      error: `Model "${config.model}" was not found. Check the model name or choose the correct provider.`,
+    };
+  }
+
+  return { ok: true };
 }

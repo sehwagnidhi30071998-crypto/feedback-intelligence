@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { createClient } from "@/lib/supabase-server";
+import { jiraIssueTypeFor } from "@/lib/jira";
 import FeedbackReviewForm, {
   type ReviewItem,
   type JiraConnectionOption,
@@ -95,6 +96,10 @@ export default async function FeedbackReviewPage({
     sprint: f.jira_tickets?.[0]?.sprint ?? null,
     assignee: f.jira_tickets?.[0]?.assignee ?? null,
     jiraConnections,
+    suggestedIssueType: jiraIssueTypeFor(
+      f.type,
+      jiraConnections[0]?.issueType ?? "Task"
+    ),
   };
 
   return (
