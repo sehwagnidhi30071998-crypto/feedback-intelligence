@@ -1,6 +1,9 @@
 import type { Metadata } from "next";
+import Link from "next/link";
 import AuthCard from "@/components/AuthCard";
 import Wordmark, { Waveform } from "@/components/Wordmark";
+import { createClient } from "@/lib/supabase-server";
+import StarRating from "@/components/StarRating";
 
 export const metadata: Metadata = {
   title: "Turn meeting talk into tracked work",
@@ -52,7 +55,24 @@ const capabilities = [
   },
 ] as const;
 
-export default function Home() {
+export default async function Home() {
+  const supabase = await createClient();
+  const { data: reviews } = await supabase
+    .from("reviews")
+    .select("id, rating, comment, author_name, created_at")
+    .order("created_at", { ascending: false })
+    .limit(3);
+  const list = (reviews ?? []) as {
+    id: string;
+    rating: number;
+    comment: string;
+    author_name: string | null;
+    created_at: string;
+  }[];
+  const avg =
+    list.length > 0 ? list.reduce((s, r) => s + r.rating, 0) / list.length : 0;
+  const reviewCount = list.length;
+
   return (
     <div className="min-h-screen">
       <script
@@ -72,6 +92,15 @@ export default function Home() {
               "Extract and review product feedback",
               "Create Jira tickets from approved items",
             ],
+            ...(reviewCount > 0
+              ? {
+                  aggregateRating: {
+                    "@type": "AggregateRating",
+                    ratingValue: avg.toFixed(1),
+                    reviewCount,
+                  },
+                }
+              : {}),
           }),
         }}
       />
@@ -161,6 +190,67 @@ export default function Home() {
                   </p>
                 </div>
               ))}
+            </div>
+          </div>
+        </section>
+
+        <section className="border-t border-line bg-paper">
+          <div className="mx-auto w-full max-w-6xl px-6 py-14 lg:py-20">
+            <div className="flex flex-col gap-6 sm:flex-row sm:items-end sm:justify-between">
+              <div>
+                <p className="fi-eyebrow">Community</p>
+                <h2 className="mt-1 max-w-xl font-display text-2xl font-semibold tracking-tight text-ink sm:text-3xl">
+                  Teams are turning talk into work.
+                </h2>
+                {reviewCount > 0 ? (
+                  <div className="mt-3 flex items-center gap-3">
+                    <StarRating value={Math.round(avg)} readOnly size="sm" />
+                    <span className="font-display text-base font-semibold text-ink">
+                      {avg.toFixed(1)}
+                    </span>
+                    <span className="text-sm text-muted">
+                      from {reviewCount} review{reviewCount !== 1 ? "s" : ""}
+                    </span>
+                  </div>
+                ) : (
+                  <p className="mt-3 text-sm text-muted">No reviews yet — be the first.</p>
+                )}
+              </div>
+              <Link href="/reviews" className="fi-btn-primary shrink-0">
+                Leave a review or request a feature
+              </Link>
+            </div>
+
+            {list.length > 0 ? (
+              <div className="mt-8 grid grid-cols-1 gap-3 md:grid-cols-3">
+                {list.map((r) => (
+                  <div key={r.id} className="fi-card p-5">
+                    <StarRating value={r.rating} readOnly size="sm" />
+                    <p className="mt-3 line-clamp-4 text-sm leading-relaxed text-ink">
+                      {r.comment}
+                    </p>
+                    <p className="mt-3 font-mono text-xs text-faint">
+                      {r.author_name ? r.author_name : "Anonymous"} · {r.rating}/5
+                    </p>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <div className="mt-8 rounded-xl border border-dashed border-line-strong bg-surface p-8 text-center">
+                <p className="text-sm text-muted">
+                  Reviews you receive will appear here and on the{" "}
+                  <Link href="/reviews" className="fi-link">
+                    community page
+                  </Link>
+                  .
+                </p>
+              </div>
+            )}
+
+            <div className="mt-6 flex justify-center">
+              <Link href="/reviews" className="fi-link text-sm">
+                View all reviews & feature requests →
+              </Link>
             </div>
           </div>
         </section>

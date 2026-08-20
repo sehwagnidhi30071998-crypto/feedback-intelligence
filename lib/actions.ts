@@ -765,3 +765,92 @@ export async function setFeedbackStatus(
   }
   return {};
 }
+
+export type CreateReviewState = { error?: string; success?: string };
+
+export async function createReview(
+  _prevState: CreateReviewState,
+  formData: FormData
+): Promise<CreateReviewState> {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) {
+    return { error: "You need to be signed in to leave a review." };
+  }
+
+  const rating = Number(String(formData.get("rating") ?? "").trim());
+  const comment = String(formData.get("comment") ?? "").trim();
+  const authorName = String(formData.get("author_name") ?? "").trim() || null;
+
+  if (!Number.isInteger(rating) || rating < 1 || rating > 5) {
+    return { error: "Please select a rating from 1 to 5." };
+  }
+  if (!comment) {
+    return { error: "Please write a comment." };
+  }
+  if (authorName && authorName.length > 80) {
+    return { error: "Name must be 80 characters or fewer." };
+  }
+
+  const { error } = await supabase.from("reviews").insert({
+    rating,
+    comment,
+    author_name: authorName,
+    user_id: user.id,
+  });
+
+  if (error) {
+    return { error: "Could not save your review. Please try again." };
+  }
+
+  revalidatePath("/reviews");
+  revalidatePath("/");
+  return { success: "Thanks for your review!" };
+}
+
+export type CreateFeatureRequestState = { error?: string; success?: string };
+
+export async function createFeatureRequest(
+  _prevState: CreateFeatureRequestState,
+  formData: FormData
+): Promise<CreateFeatureRequestState> {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) {
+    return { error: "You need to be signed in to send a feature request." };
+  }
+
+  const featureDescription = String(
+    formData.get("feature_description") ?? ""
+  ).trim();
+  const problem = String(formData.get("problem") ?? "").trim();
+  const authorName = String(formData.get("author_name") ?? "").trim() || null;
+
+  if (!featureDescription) {
+    return { error: "Please describe the feature." };
+  }
+  if (!problem) {
+    return { error: "Please tell us what problem it would solve." };
+  }
+  if (authorName && authorName.length > 80) {
+    return { error: "Name must be 80 characters or fewer." };
+  }
+
+  const { error } = await supabase.from("feature_requests").insert({
+    feature_description: featureDescription,
+    problem,
+    author_name: authorName,
+    user_id: user.id,
+  });
+
+  if (error) {
+    return { error: "Could not send your request. Please try again." };
+  }
+
+  revalidatePath("/reviews");
+  return { success: "Thanks — your feature request was sent!" };
+}
