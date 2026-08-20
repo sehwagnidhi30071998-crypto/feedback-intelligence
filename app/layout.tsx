@@ -30,6 +30,7 @@ export const metadata: Metadata = {
   },
   description:
     "Extract actionable product feedback from meeting transcripts and turn approved items into Jira tickets.",
+  verification: { google: "oWtK6_wxhWEy9mGo3PcXMoW5fffx9HMbKeHVz8ciReM" },
   robots: { index: true, follow: true },
   openGraph: {
     type: "website",
