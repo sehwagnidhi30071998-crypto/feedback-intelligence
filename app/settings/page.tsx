@@ -1,3 +1,4 @@
+import type { Metadata } from "next";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase-server";
 import JiraConnectionForm, {
@@ -6,6 +7,12 @@ import JiraConnectionForm, {
 import AiKeyForm from "@/components/AiKeyForm";
 import { deleteJiraConnection, deleteAiKey } from "@/lib/actions";
 import { AI_PROVIDERS } from "@/lib/constants";
+import { noindex } from "@/lib/seo";
+
+export const metadata: Metadata = {
+  ...noindex,
+  title: "Configure your workspace",
+};
 
 type DbConnection = {
   id: string;

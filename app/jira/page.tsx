@@ -1,8 +1,15 @@
+import type { Metadata } from "next";
 import EmptyState from "@/components/EmptyState";
 import JiraTicketsTable, {
   type JiraTicketRow,
 } from "@/components/JiraTicketsTable";
 import { createClient } from "@/lib/supabase-server";
+import { noindex } from "@/lib/seo";
+
+export const metadata: Metadata = {
+  ...noindex,
+  title: "Create Jira tickets",
+};
 
 type DbTicket = {
   id: string;

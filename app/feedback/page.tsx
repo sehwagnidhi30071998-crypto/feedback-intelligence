@@ -1,6 +1,13 @@
+import type { Metadata } from "next";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase-server";
 import FeedbackView, { type FeedbackRow } from "@/components/FeedbackView";
+import { noindex } from "@/lib/seo";
+
+export const metadata: Metadata = {
+  ...noindex,
+  title: "Review extracted feedback",
+};
 
 type DbFeedback = {
   id: string;

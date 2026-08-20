@@ -1,3 +1,4 @@
+import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { createClient } from "@/lib/supabase-server";
@@ -6,6 +7,12 @@ import FeedbackReviewForm, {
   type ReviewItem,
   type JiraConnectionOption,
 } from "@/components/FeedbackReviewForm";
+import { noindex } from "@/lib/seo";
+
+export const metadata: Metadata = {
+  ...noindex,
+  title: "Review feedback item",
+};
 
 type DbFeedback = {
   id: string;

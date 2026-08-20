@@ -1,7 +1,14 @@
+import type { Metadata } from "next";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase-server";
 import EmptyState from "@/components/EmptyState";
 import MeetingsList, { type MeetingRow } from "@/components/MeetingsList";
+import { noindex } from "@/lib/seo";
+
+export const metadata: Metadata = {
+  ...noindex,
+  title: "Add transcript",
+};
 
 type Meeting = {
   id: string;

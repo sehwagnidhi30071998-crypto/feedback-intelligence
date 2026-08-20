@@ -1,6 +1,13 @@
+import type { Metadata } from "next";
 import Link from "next/link";
 import LoginForm from "@/components/LoginForm";
 import { Waveform } from "@/components/Wordmark";
+import { noindex } from "@/lib/seo";
+
+export const metadata: Metadata = {
+  ...noindex,
+  title: "Sign in",
+};
 
 export default function LoginPage() {
   return (

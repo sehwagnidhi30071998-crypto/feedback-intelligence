@@ -1,5 +1,12 @@
+import type { Metadata } from "next";
 import Link from "next/link";
 import AddMeetingForm from "@/components/AddMeetingForm";
+import { noindex } from "@/lib/seo";
+
+export const metadata: Metadata = {
+  ...noindex,
+  title: "Add transcript",
+};
 
 export default function NewMeetingPage() {
   return (

@@ -319,6 +319,10 @@ export default function AppShell({
   };
 
   if (!userEmail) {
+    if (pathname === "/") {
+      return <main className="min-h-screen bg-paper">{children}</main>;
+    }
+
     return (
       <>
         <header className="sticky top-0 z-20 border-b border-line bg-paper/90 backdrop-blur lg:hidden">

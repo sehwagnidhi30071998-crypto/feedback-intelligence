@@ -1,3 +1,4 @@
+import type { Metadata } from "next";
 import Link from "next/link";
 import { Suspense } from "react";
 import StatCard from "@/components/StatCard";
@@ -5,6 +6,12 @@ import EmptyState from "@/components/EmptyState";
 import Tour from "@/components/Tour";
 import { Waveform } from "@/components/Wordmark";
 import { createClient } from "@/lib/supabase-server";
+import { noindex } from "@/lib/seo";
+
+export const metadata: Metadata = {
+  ...noindex,
+  title: "Dashboard",
+};
 
 const stages = [
   {

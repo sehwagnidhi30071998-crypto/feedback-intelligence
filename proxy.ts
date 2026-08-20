@@ -30,15 +30,16 @@ export async function proxy(request: NextRequest) {
 
   const path = request.nextUrl.pathname;
   const isAuthPage = path.startsWith("/login") || path.startsWith("/signup");
+  const isPublicPage = path === "/";
 
-  if (!user && !isAuthPage) {
+  if (!user && !isAuthPage && !isPublicPage) {
     const url = request.nextUrl.clone();
     url.pathname = "/login";
     url.search = "";
     return NextResponse.redirect(url);
   }
 
-  if (user && isAuthPage) {
+  if (user && (isAuthPage || isPublicPage)) {
     const url = request.nextUrl.clone();
     url.pathname = "/dashboard";
     url.search = "";

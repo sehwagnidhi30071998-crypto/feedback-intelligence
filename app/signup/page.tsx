@@ -1,6 +1,13 @@
+import type { Metadata } from "next";
 import Link from "next/link";
 import SignupForm from "@/components/SignupForm";
 import { Waveform } from "@/components/Wordmark";
+import { noindex } from "@/lib/seo";
+
+export const metadata: Metadata = {
+  ...noindex,
+  title: "Create account",
+};
 
 export default function SignupPage() {
   return (

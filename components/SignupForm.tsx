@@ -4,7 +4,11 @@ import { useActionState } from "react";
 import Link from "next/link";
 import { signUp } from "@/lib/auth-actions";
 
-export default function SignupForm() {
+export default function SignupForm({
+  onSwitch,
+}: {
+  onSwitch?: () => void;
+}) {
   const [state, formAction, pending] = useActionState(signUp, {});
 
   return (
@@ -63,9 +67,15 @@ export default function SignupForm() {
 
       <p className="text-sm text-muted">
         Already have an account?{" "}
-        <Link href="/login" className="fi-link">
-          Sign in
-        </Link>
+        {onSwitch ? (
+          <button type="button" onClick={onSwitch} className="fi-link">
+            Sign in
+          </button>
+        ) : (
+          <Link href="/login" className="fi-link">
+            Sign in
+          </Link>
+        )}
       </p>
     </form>
   );
