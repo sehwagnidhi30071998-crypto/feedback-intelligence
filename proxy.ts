@@ -31,10 +31,11 @@ export async function proxy(request: NextRequest) {
   const path = request.nextUrl.pathname;
   const isAuthPage = path.startsWith("/login") || path.startsWith("/signup");
   const isLanding = path === "/";
+  const isAuthCallback = path.startsWith("/auth/callback");
   const isPublicContent =
     path === "/reviews" || path.startsWith("/reviews/");
 
-  if (!user && !isAuthPage && !isLanding && !isPublicContent) {
+  if (!user && !isAuthPage && !isLanding && !isAuthCallback && !isPublicContent) {
     const url = request.nextUrl.clone();
     url.pathname = "/login";
     url.search = "";

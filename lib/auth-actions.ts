@@ -2,6 +2,7 @@
 
 import { createClient } from "@/lib/supabase-server";
 import { redirect } from "next/navigation";
+import { siteUrl } from "@/lib/seo";
 
 export type AuthState = { error?: string; success?: string };
 
@@ -41,7 +42,11 @@ export async function signUp(
   }
 
   const supabase = await createClient();
-  const { data, error } = await supabase.auth.signUp({ email, password });
+  const { data, error } = await supabase.auth.signUp({
+    email,
+    password,
+    options: { emailRedirectTo: `${siteUrl}/auth/callback` },
+  });
 
   if (error) {
     return { error: "Could not create the account. Please try again." };
