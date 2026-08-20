@@ -30,16 +30,18 @@ export async function proxy(request: NextRequest) {
 
   const path = request.nextUrl.pathname;
   const isAuthPage = path.startsWith("/login") || path.startsWith("/signup");
-  const isPublicPage = path === "/" || path === "/reviews" || path.startsWith("/reviews/");
+  const isLanding = path === "/";
+  const isPublicContent =
+    path === "/reviews" || path.startsWith("/reviews/");
 
-  if (!user && !isAuthPage && !isPublicPage) {
+  if (!user && !isAuthPage && !isLanding && !isPublicContent) {
     const url = request.nextUrl.clone();
     url.pathname = "/login";
     url.search = "";
     return NextResponse.redirect(url);
   }
 
-  if (user && (isAuthPage || isPublicPage)) {
+  if (user && (isAuthPage || isLanding)) {
     const url = request.nextUrl.clone();
     url.pathname = "/dashboard";
     url.search = "";
