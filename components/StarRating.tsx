@@ -13,10 +13,13 @@ export default function StarRating({
   size = "md",
   readOnly = false,
 }: Props) {
-  const starSize = size === "sm" ? "h-4 w-4" : "h-5 w-5";
+  const starSize = size === "sm" ? "h-6 w-6" : "h-8 w-8";
 
   return (
-    <div className="flex items-center gap-1" aria-label={`Rating: ${value} out of 5`}>
+    <div
+      className={`flex items-center ${size === "sm" ? "gap-1" : "gap-1.5"}`}
+      aria-label={`Rating: ${value} out of 5`}
+    >
       {[1, 2, 3, 4, 5].map((n) => {
         const filled = n <= value;
         const star = (
