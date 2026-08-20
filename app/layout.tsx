@@ -39,12 +39,21 @@ export const metadata: Metadata = {
     description:
       "Extract actionable product feedback from meeting transcripts and turn approved items into Jira tickets.",
     url: "/",
+    images: [
+      {
+        url: "/opengraph-image",
+        width: 1200,
+        height: 630,
+        alt: "Feedback Intelligence — Turn meeting talk into tracked work",
+      },
+    ],
   },
   twitter: {
-    card: "summary",
+    card: "summary_large_image",
     title: "Feedback Intelligence — Turn meeting talk into tracked work",
     description:
       "Extract actionable product feedback from meeting transcripts and turn approved items into Jira tickets.",
+    images: ["/opengraph-image"],
   },
 };
 
